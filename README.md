@@ -1,4 +1,4 @@
-## Zorbe7 Audio Lab (Starter Backend)
+## transform Audio Lab (Starter Backend)
 
 This project is an educational audio processing lab that implements a custom **"Zorbe7 Transform"** (manual DFT/IDFT without `np.fft`) and exposes it through a Flask API. The long‑term goal is to support equalization, spectrograms, audiogram views, PCA/SVD "best basis", and edge‑device export.
 
