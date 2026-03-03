@@ -11,7 +11,7 @@ import soundfile as sf
 from flask import Flask, jsonify, redirect, request, url_for
 from flask_cors import CORS
 
-from zorbe7 import dft, idft, sliding_window_spectrogram
+from manual_dft import dft, idft, sliding_window_spectrogram
 
 
 def load_modes_config() -> Dict[str, Any]:
@@ -84,7 +84,7 @@ def create_app() -> Flask:
 
     @app.get("/health")
     def health() -> Any:
-        return jsonify({"status": "ok", "message": "Zorbe7 backend up"})
+        return jsonify({"status": "ok", "message": "Backend is up"})
 
     @app.post("/transform")
     def transform() -> Any:
