@@ -66,13 +66,7 @@ def sliding_window_spectrogram(
     hop_size: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-<<<<<<< HEAD
     Compute a basic spectrogram using a sliding Hanning window and the manual DFT.
-=======
-    Compute a basic spectrogram using a sliding Hanning window
-    and the manual DFT. Returns linear magnitudes; callers can convert
-    to dB as needed.
->>>>>>> 97c47db (Refactored code and updated frontend components)
     """
     x = np.asarray(signal, dtype=np.float64)
     N = x.shape[0]
@@ -89,14 +83,8 @@ def sliding_window_spectrogram(
     for start in range(0, N - window_size + 1, hop_size):
         end = start + window_size
         segment = x[start:end] * window
-<<<<<<< HEAD
-        X = dft(segment)
-        frames.append(np.abs(X))
-=======
         X = dft_fast(segment, W_spectro)
-        mag = np.abs(X)
-        frames.append(mag)
->>>>>>> 97c47db (Refactored code and updated frontend components)
+        frames.append(np.abs(X))
         times.append((start + window_size / 2) / sample_rate)
 
     if not frames:
