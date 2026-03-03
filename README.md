@@ -1,12 +1,12 @@
-## transform Audio Lab (Starter Backend)
+## Audio Equalizer Lab (Starter Backend)
 
-This project is an educational audio processing lab that implements a custom **"Zorbe7 Transform"** (manual DFT/IDFT without `np.fft`) and exposes it through a Flask API. The long‑term goal is to support equalization, spectrograms, audiogram views, PCA/SVD "best basis", and edge‑device export.
+This project is an educational audio processing lab that implements a custom **manual DFT/IDFT transform** (without `np.fft`) and exposes it through a Flask API. The long‑term goal is to support equalization, spectrograms, audiogram views, PCA/SVD "best basis", and edge‑device export.
 
 ### Structure (current starter)
 
 - **backend/**
   - `app.py`: Flask app entrypoint and API routes.
-  - `zorbe7.py`: Manual DFT/IDFT and basic spectrogram utilities.
+  - `manual_dft.py`: Manual DFT/IDFT and basic spectrogram utilities.
   - `requirements.txt`: Python dependencies for the backend.
 
 ### Getting Started (Backend Only)
