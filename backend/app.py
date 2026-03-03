@@ -203,6 +203,28 @@ def create_app() -> Flask:
         max_audio_samples = 100_000
         audio_step = max(1, len(y) // max_audio_samples)
 
+        # --- manual DFT block analysis for debugging / visualization ---
+        # Take a fixed block of samples and compute magnitudes using our
+        # precomputed DFT matrix.  This avoids np.fft entirely as requested.
+        manual_block = 1024
+        W_manual, _ = get_dft_matrices(manual_block)
+
+        # ensure the blocks are the right length (pad if short)
+        inp_block = y[:manual_block]
+        if inp_block.shape[0] < manual_block:
+            inp_block = np.pad(inp_block, (0, manual_block - inp_block.shape[0]))
+        out_block = y_eq[:manual_block]
+        if out_block.shape[0] < manual_block:
+            out_block = np.pad(out_block, (0, manual_block - out_block.shape[0]))
+
+        input_spectrum = dft_fast(inp_block, W_manual)
+        output_spectrum = dft_fast(out_block, W_manual)
+
+        input_mag = np.abs(input_spectrum[: manual_block // 2])
+        output_mag = np.abs(output_spectrum[: manual_block // 2])
+        freq_axis = np.linspace(0, float(sr) / 2, manual_block // 2)
+        # -------------------------------------------------------------
+
         response: Dict[str, Any] = {
             "filename": filename,
             "sample_rate": int(sr),
@@ -224,7 +246,13 @@ def create_app() -> Flask:
                 "times": out_t,
                 "values": out_S,
             },
+            # include manual DFT results (renamed to fft_*)
+            "fft_freqs": freq_axis.tolist(),
+            "input_fft": input_mag.tolist(),
+            "output_fft": output_mag.tolist(),
         }
+
+        
 
         return jsonify(response)
 
