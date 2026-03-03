@@ -25,6 +25,15 @@ export const modesConfig = {
       { id: 'formants', label: 'Formants', min_hz: 300, max_hz: 3400 },
       { id: 'sibilance', label: 'Sibilance', min_hz: 3400, max_hz: 8000 }
     ]
+  },
+  ecg: {
+    label: 'ECG Abnormalities',
+    bands: [
+      { id: 'atrial', label: 'Atrial (P-Wave)', min_hz: 0.5, max_hz: 5 },
+      { id: 'ventricular', label: 'Ventricular (QRS)', min_hz: 5, max_hz: 40 },
+      { id: 'repolarization', label: 'T-Wave', min_hz: 0.5, max_hz: 10 },
+      { id: 'noise', label: 'Muscle Artifacts', min_hz: 50, max_hz: 100 }
+    ]
   }
 }
 
