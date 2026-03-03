@@ -11,16 +11,12 @@ import soundfile as sf
 from flask import Flask, jsonify, redirect, request, url_for
 from flask_cors import CORS
 
-<<<<<<< HEAD
-from manual_dft import dft, idft, sliding_window_spectrogram
-=======
 from manual_dft import (
-    get_dft_matrices,
-    dft_fast,
-    idft_fast,
+    get_dft_matrices,  # Added this
+    dft_fast,          # Changed from dft
+    idft_fast,         # Changed from idft
     sliding_window_spectrogram,
 )
->>>>>>> 97c47db (Refactored code and updated frontend components)
 
 
 def load_modes_config() -> Dict[str, Any]:
