@@ -43,6 +43,13 @@ function WaveformCanvas({
       else ctx.lineTo(x, y)
     }
     ctx.stroke()
+    // Draw the Playhead (the "Cine" indicator)
+    ctx.strokeStyle = '#ef4444'; // Red color
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(width / 2, 0);
+    ctx.lineTo(width / 2, height);
+    ctx.stroke();
   }, [samples, offset, windowSize, height, width])
 
   return (
@@ -126,6 +133,63 @@ function SpectrogramCanvas({ freqs, times, values, height = 200, width = 600 }) 
   )
 }
 
+function FrequencyGraph({ freqs, magnitude, isAudiogram, width = 600, height = 200 }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !freqs.length) return;
+    const ctx = canvas.getContext('2d');
+    canvas.width = width; canvas.height = height;
+
+    ctx.fillStyle = '#020617';
+    ctx.fillRect(0, 0, width, height);
+    ctx.strokeStyle = isAudiogram ? '#fbbf24' : '#60a5fa'; // Amber for Audiogram, Blue for Linear
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+    for (let i = 0; i < freqs.length; i++) {
+      let x, y;
+
+      if (isAudiogram) {
+        // Logarithmic X-axis: log2(f)
+        const minF = 20, maxF = 5500; // Nyquist for 11k
+        x = (Math.log2(freqs[i] / minF) / Math.log2(maxF / minF)) * width;
+        
+        // Decibel Y-axis: inverted (0dB at top, -100dB at bottom)
+        const db = 20 * Math.log10(magnitude[i] + 1e-6);
+        y = Math.min(height, Math.max(0, (db / -100) * height));
+      } else {
+        // Linear Scale
+        x = (freqs[i] / 5500) * width;
+        y = height - (magnitude[i] * height * 0.8);
+      }
+
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Draw Grid Lines for Audiogram
+    if (isAudiogram) {
+      ctx.strokeStyle = '#334155';
+      ctx.setLineDash([5, 5]);
+      [250, 500, 1000, 2000, 4000].forEach(f => {
+        const lx = (Math.log2(f / 20) / Math.log2(5500 / 20)) * width;
+        ctx.beginPath(); ctx.moveTo(lx, 0); ctx.lineTo(lx, height); ctx.stroke();
+      });
+      ctx.setLineDash([]);
+    }
+  }, [freqs, magnitude, isAudiogram]);
+
+  return (
+    <div className="graph-container">
+      <canvas ref={canvasRef} />
+      <div className="graph-label">{isAudiogram ? 'Audiogram (Log/dB)' : 'Linear Spectrum'}</div>
+    </div>
+  );
+}
+
 function App() {
   const [mode, setMode] = useState('musical')
   const [file, setFile] = useState(null)
@@ -142,6 +206,7 @@ function App() {
   const startOffsetRef = useRef(0)
   const rafRef = useRef(0)
   const [scrollOffset, setScrollOffset] = useState(0)
+  const [isAudiogram, setIsAudiogram] = useState(false);
 
   const currentBands = useMemo(() => {
     return modesConfig[mode]?.bands ?? []
@@ -154,6 +219,28 @@ function App() {
       [bandId]: gain
     }))
   }
+
+const exportToCpp = () => {
+  const code = `
+// Generated Edge Equalizer Config
+// Mode: ${mode}
+// ---------------------------------------------------
+const int num_bands = ${currentBands.length};
+
+// Multipliers for each band
+const float gains[] = { ${currentBands.map(b => weights[b.id] || 1.0).join(', ')} };
+
+// Frequency boundaries for the C++ DSP logic (Hz)
+const float freq_mins[] = { ${currentBands.map(b => b.min_hz).join(', ')} };
+const float freq_maxs[] = { ${currentBands.map(b => b.max_hz).join(', ')} };
+  `;
+
+  const blob = new Blob([code], { type: 'text/plain' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = 'eq_config.h';
+  link.click();
+};
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -424,10 +511,46 @@ function App() {
           </div>
 
           <div className="panel">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2>Frequency Analysis</h2>
+              <button
+                type="button"
+                onClick={() => setIsAudiogram((prev) => !prev)}
+              >
+                Switch to {isAudiogram ? 'Linear Scale' : 'Audiogram Scale'}
+              </button>
+            </div>
+            <div className="waveform-grid">
+              <div>
+                <h3>Input</h3>
+                <FrequencyGraph
+                  freqs={result.fft_freqs || []}
+                  magnitude={result.input_fft || []}
+                  isAudiogram={isAudiogram}
+                />
+              </div>
+              <div>
+                <h3>Output</h3>
+                <FrequencyGraph
+                  freqs={result.fft_freqs || []}
+                  magnitude={result.output_fft || []}
+                  isAudiogram={isAudiogram}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="panel">
             <h2>Raw backend JSON</h2>
             <pre className="json-view">
               {JSON.stringify(result, null, 2)}
             </pre>
+          </div>
+
+          <div className="panel">
+            <button type="button" onClick={exportToCpp}>
+              Export to C++ header
+            </button>
           </div>
         </>
       )}
