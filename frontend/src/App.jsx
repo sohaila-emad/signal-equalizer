@@ -60,7 +60,7 @@ function App() {
 
   return (
     <div className="app">
-      <h1>Zorbe7 Audio Lab (Frontend)</h1>
+      <h1>Audio Equalizer Lab (Frontend)</h1>
 
       <form className="panel" onSubmit={handleSubmit}>
         <div className="field">
