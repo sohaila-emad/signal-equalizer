@@ -1,6 +1,28 @@
 import numpy as np
 
 
+def get_dft_matrices(N: int) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Create forward and inverse DFT matrices once for a given size N.
+    This avoids recomputing the exponential grid for every block.
+    """
+    n = np.arange(N)
+    k = n.reshape((N, 1))
+    W = np.exp(-2j * np.pi * k * n / N)
+    W_inv = np.conj(W) / N
+    return W, W_inv
+
+
+def dft_fast(signal: np.ndarray, W: np.ndarray) -> np.ndarray:
+    x = np.asarray(signal, dtype=np.complex128)
+    return W @ x
+
+
+def idft_fast(spectrum: np.ndarray, W_inv: np.ndarray) -> np.ndarray:
+    X = np.asarray(spectrum, dtype=np.complex128)
+    return W_inv @ X
+
+
 def dft(signal: np.ndarray) -> np.ndarray:
     """
     Manual Discrete Fourier Transform (DFT) implementation without np.fft.
@@ -44,7 +66,13 @@ def sliding_window_spectrogram(
     hop_size: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
+<<<<<<< HEAD
     Compute a basic spectrogram using a sliding Hanning window and the manual DFT.
+=======
+    Compute a basic spectrogram using a sliding Hanning window
+    and the manual DFT. Returns linear magnitudes; callers can convert
+    to dB as needed.
+>>>>>>> 97c47db (Refactored code and updated frontend components)
     """
     x = np.asarray(signal, dtype=np.float64)
     N = x.shape[0]
@@ -53,13 +81,22 @@ def sliding_window_spectrogram(
 
     window = np.hanning(window_size)
 
+    # Precompute DFT matrix once for this window size for speed.
+    W_spectro, _ = get_dft_matrices(window_size)
+
     frames = []
     times = []
     for start in range(0, N - window_size + 1, hop_size):
         end = start + window_size
         segment = x[start:end] * window
+<<<<<<< HEAD
         X = dft(segment)
         frames.append(np.abs(X))
+=======
+        X = dft_fast(segment, W_spectro)
+        mag = np.abs(X)
+        frames.append(mag)
+>>>>>>> 97c47db (Refactored code and updated frontend components)
         times.append((start + window_size / 2) / sample_rate)
 
     if not frames:
@@ -70,5 +107,13 @@ def sliding_window_spectrogram(
     return freqs, np.asarray(times), S
 
 
-__all__ = ["dft", "idft", "magnitude_spectrum", "sliding_window_spectrogram"]
+__all__ = [
+    "get_dft_matrices",
+    "dft_fast",
+    "idft_fast",
+    "dft",
+    "idft",
+    "magnitude_spectrum",
+    "sliding_window_spectrogram",
+]
 

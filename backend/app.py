@@ -11,7 +11,16 @@ import soundfile as sf
 from flask import Flask, jsonify, redirect, request, url_for
 from flask_cors import CORS
 
+<<<<<<< HEAD
 from manual_dft import dft, idft, sliding_window_spectrogram
+=======
+from manual_dft import (
+    get_dft_matrices,
+    dft_fast,
+    idft_fast,
+    sliding_window_spectrogram,
+)
+>>>>>>> 97c47db (Refactored code and updated frontend components)
 
 
 def load_modes_config() -> Dict[str, Any]:
@@ -58,6 +67,7 @@ def apply_equalizer(
 
     freqs = np.linspace(0.0, sample_rate, spectrum.shape[0], endpoint=False)
     equalized = spectrum.copy()
+    N = spectrum.shape[0]
 
     for band in bands:
         band_id = band.get("id")
@@ -66,8 +76,15 @@ def apply_equalizer(
         gain = float(weights.get(band_id, 1.0))
         f_min = float(band.get("min_hz", 0.0))
         f_max = float(band.get("max_hz", sample_rate / 2.0))
+
+        # Positive frequencies
         mask = (freqs >= f_min) & (freqs < f_max)
         equalized[mask] *= gain
+
+        # Negative-frequency counterparts (second half of the DFT bins)
+        # Keep the spectrum Hermitian so the time-domain signal stays real.
+        neg_mask = (freqs > sample_rate - f_max) & (freqs <= sample_rate - f_min)
+        equalized[neg_mask] *= gain
 
     return equalized
 
@@ -97,10 +114,11 @@ def create_app() -> Flask:
           - 'mode': one of the keys in modes.json (default: "musical")
           - 'weights': JSON object mapping band id -> gain (e.g. {"low": 1.2, "high": 0.8})
         - Loads audio with librosa (no FFT calls).
-        - Runs the manual DFT on a short segment and applies simple equalization.
-        - Runs the manual IDFT to reconstruct the equalized signal.
-        - Computes a sliding-window spectrogram on the reconstructed segment.
-        - Returns basic metadata and spectrogram shape.
+        - Runs the manual DFT in blocks and applies simple equalization.
+        - Runs the manual IDFT to reconstruct the equalized full-length signal.
+        - Computes a sliding-window spectrogram on a prefix of the reconstructed signal.
+        - Returns basic metadata, reconstructed audio samples, and a real-valued spectrogram
+          suitable for JSON (no complex numbers).
         """
         if "file" not in request.files:
             return jsonify({"error": "No file uploaded under field 'file'"}), 400
@@ -113,7 +131,8 @@ def create_app() -> Flask:
         file_bytes = io.BytesIO(file.read())
 
         # Use librosa only for loading audio samples (no FFT operations).
-        y, sr = librosa.load(file_bytes, sr=None, mono=True)
+        # Downsample for speed; 11.025 kHz is enough for this demo.
+        y, sr = librosa.load(file_bytes, sr=11025, mono=True)
 
         # Mode and slider weights (optional)
         mode = request.form.get("mode", "musical")
@@ -131,47 +150,83 @@ def create_app() -> Flask:
         else:
             weights = {}
 
-        # Work on a short prefix of the signal for now.
-        max_samples = min(len(y), 4096)
-        segment = y[:max_samples]
+        # Block-wise equalization to avoid O(N^2) memory/time on very long tracks.
+        # Use smaller blocks and precomputed DFT matrices for speed.
+        block_size = 1024
+        n_samples = len(y)
+        y_eq = np.zeros_like(y, dtype=np.float32)
 
-        # Manual DFT + equalization + IDFT round-trip on this segment.
-        spectrum = dft(segment)
-        spectrum_eq = apply_equalizer(
-            spectrum=spectrum,
-            sample_rate=float(sr),
-            mode=mode,
-            weights=weights,
-            modes_config=modes_config,
-        )
-        reconstructed = idft(spectrum_eq).real.astype(np.float32)
+        # Precompute DFT/IDFT matrices once for this block size.
+        W, W_inv = get_dft_matrices(block_size)
 
-        # Simple sliding-window spectrogram (using the manual DFT under the hood)
-        # on the reconstructed/equalized segment.
-        window_size = 512
-        hop_size = 256
-        freqs, times, S = sliding_window_spectrogram(
-            signal=reconstructed,
-            sample_rate=float(sr),
-            window_size=window_size,
-            hop_size=hop_size,
-        )
+        for start in range(0, n_samples, block_size):
+            end = min(start + block_size, n_samples)
+            block = y[start:end]
 
-        # Only basic metadata is returned for now to keep the payload small.
+            # Pad if block is smaller than block_size (important for the DFT matrix size).
+            actual_len = len(block)
+            if actual_len < block_size:
+                block = np.pad(block, (0, block_size - actual_len))
+
+            spec_block = dft_fast(block, W)
+            spec_block_eq = apply_equalizer(
+                spectrum=spec_block,
+                sample_rate=float(sr),
+                mode=mode,
+                weights=weights,
+                modes_config=modes_config,
+            )
+            time_block_eq = idft_fast(spec_block_eq, W_inv).real.astype(np.float32)
+
+            # Only write back the valid (un-padded) portion.
+            y_eq[start:end] = time_block_eq[:actual_len]
+
+        # Helper to generate spectrogram data (input and output) in dB.
+        def get_spectro_data(sig: np.ndarray) -> tuple[list[float], list[float], list[list[float]]]:
+            window_size = 512
+            hop_size = 256
+            max_samples = min(len(sig), 16384)
+            freqs, times, S = sliding_window_spectrogram(
+                signal=sig[:max_samples],
+                sample_rate=float(sr),
+                window_size=window_size,
+                hop_size=hop_size,
+            )
+            # Convert to dB for better visibility and keep it real-valued.
+            S_db = 20.0 * np.log10(np.abs(S) + 1e-6)
+            # Downsample for payload size.
+            f_ds = freqs[::2]
+            t_ds = times[::2]
+            S_ds = S_db[::2, ::2]
+            return f_ds.tolist(), t_ds.tolist(), S_ds.tolist()
+
+        in_f, in_t, in_S = get_spectro_data(y)
+        out_f, out_t, out_S = get_spectro_data(y_eq)
+
+        # Downsample audio for JSON payload if very long.
+        max_audio_samples = 100_000
+        audio_step = max(1, len(y) // max_audio_samples)
+
         response: Dict[str, Any] = {
             "filename": filename,
             "sample_rate": int(sr),
-            "num_samples": int(len(y)),
-            "used_samples": int(max_samples),
+            "audio_step": int(audio_step),
+            "preview_sample_rate": float(sr) / float(audio_step),
             "mode": mode,
             "weights": weights,
-            "dft_length": int(spectrum.shape[0]),
-            "reconstructed_length": int(reconstructed.shape[0]),
-            "spectrogram": {
-                "freq_bins": int(S.shape[0]),
-                "time_frames": int(S.shape[1]),
-                "freq_min_hz": float(freqs[0]),
-                "freq_max_hz": float(freqs[-1]),
+            "block_size": int(block_size),
+            "num_samples": int(len(y)),
+            "input_audio": y[::audio_step].tolist(),
+            "output_audio": y_eq[::audio_step].tolist(),
+            "spectrogram_input": {
+                "freqs": in_f,
+                "times": in_t,
+                "values": in_S,
+            },
+            "spectrogram_output": {
+                "freqs": out_f,
+                "times": out_t,
+                "values": out_S,
             },
         }
 
