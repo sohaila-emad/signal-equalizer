@@ -1,0 +1,27 @@
+{
+  "musical": {
+    "bands": [
+      { "id": "sub", "label": "Sub Bass", "min_hz": 20, "max_hz": 60 },
+      { "id": "bass", "label": "Bass", "min_hz": 60, "max_hz": 250 },
+      { "id": "low_mid", "label": "Low Mid", "min_hz": 250, "max_hz": 1000 },
+      { "id": "high_mid", "label": "High Mid", "min_hz": 1000, "max_hz": 4000 },
+      { "id": "presence", "label": "Presence", "min_hz": 4000, "max_hz": 6000 },
+      { "id": "brilliance", "label": "Brilliance", "min_hz": 6000, "max_hz": 20000 }
+    ]
+  },
+  "animal": {
+    "bands": [
+      { "id": "low_calls", "label": "Low Calls", "min_hz": 50, "max_hz": 500 },
+      { "id": "mid_calls", "label": "Mid Calls", "min_hz": 500, "max_hz": 3000 },
+      { "id": "high_calls", "label": "High Calls", "min_hz": 3000, "max_hz": 12000 }
+    ]
+  },
+  "human": {
+    "bands": [
+      { "id": "low_voice", "label": "Low Voice", "min_hz": 80, "max_hz": 300 },
+      { "id": "formants", "label": "Formants", "min_hz": 300, "max_hz": 3400 },
+      { "id": "sibilance", "label": "Sibilance", "min_hz": 3400, "max_hz": 8000 }
+    ]
+  }
+}
+
