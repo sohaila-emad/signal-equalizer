@@ -14,7 +14,7 @@ This project is an educational audio processing lab that implements a custom **m
 1. **Create and activate a virtual environment** (recommended):
 
    ```bash
-   cd "c:\\Users\\sohai\\OneDrive\\Desktop\\New folder"
+   cd "path/to/your/project/folder"
    python -m venv .venv
    .venv\\Scripts\\activate
    ```
@@ -25,13 +25,17 @@ This project is an educational audio processing lab that implements a custom **m
    pip install -r backend/requirements.txt
    ```
 
-3. **Run the Flask backend**:
+3. **Run the Flask backend and frontend**:
 
    ```bash
    cd backend
    set FLASK_APP=app.py
    set FLASK_ENV=development
    flask run
+   on another terminal
+   cd frontend
+   npm install
+   npm run dev
    ```
 
 4. **Test the health endpoint**:
