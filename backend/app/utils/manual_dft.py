@@ -104,4 +104,3 @@ __all__ = [
     "magnitude_spectrum",
     "sliding_window_spectrogram",
 ]
-

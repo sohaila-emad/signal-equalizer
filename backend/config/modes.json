@@ -24,12 +24,11 @@
     ]
   },
   "ecg": {
-  "bands": [
-    { "id": "atrial", "label": "Atrial (P-Wave)", "min_hz": 0.5, "max_hz": 5 },
-    { "id": "ventricular", "label": "Ventricular (QRS)", "min_hz": 5, "max_hz": 40 },
-    { "id": "repolarization", "label": "T-Wave", "min_hz": 0.5, "max_hz": 10 },
-    { "id": "noise", "label": "Muscle Artifacts", "min_hz": 50, "max_hz": 100 }
-  ]
+    "bands": [
+      { "id": "atrial", "label": "Atrial (P-Wave)", "min_hz": 0.5, "max_hz": 5 },
+      { "id": "ventricular", "label": "Ventricular (QRS)", "min_hz": 5, "max_hz": 40 },
+      { "id": "repolarization", "label": "T-Wave", "min_hz": 0.5, "max_hz": 10 },
+      { "id": "noise", "label": "Muscle Artifacts", "min_hz": 50, "max_hz": 100 }
+    ]
+  }
 }
-}
-
