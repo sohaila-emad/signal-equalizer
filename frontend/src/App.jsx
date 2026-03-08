@@ -7,12 +7,13 @@ import SliderPanel from './components/Equalizer/SliderPanel';
 import LinkedViewers from './components/Viewers/LinkedViewers';
 import FftGraph from './components/Graphs/FftGraph';
 import Spectrogram from './components/Graphs/Spectrogram';
-import { uploadAndTransform } from './services/api';
+import { uploadAndTransform, getModes } from './services/api';
 
 function App() {
   // Core state
   const [file, setFile] = useState(null);
   const [currentMode, setCurrentMode] = useState('generic');
+  const [allModes, setAllModes] = useState({});
   const [bands, setBands] = useState([]);
   const [weights, setWeights] = useState({});
 
@@ -29,6 +30,13 @@ function App() {
   const [error, setError] = useState(null);
   const [showSpectrograms, setShowSpectrograms] = useState(true);
   const [isAudiogram, setIsAudiogram] = useState(false);
+
+  // Fetch all mode definitions once on mount
+  useEffect(() => {
+    getModes()
+      .then((data) => setAllModes(data))
+      .catch((err) => console.error('Failed to load modes:', err));
+  }, []);
 
   // Listen for bandsLoadedFromConfig event to trigger uploadAndTransform
   useEffect(() => {
@@ -151,11 +159,8 @@ function App() {
   const handleModeChange = (newMode) => {
     setCurrentMode(newMode);
     setWeights({});
-    if (newMode === 'generic') {
-      // Keep current bands for generic mode
-    } else {
-      // Bands will come from backend for other modes
-      setBands([]);
+    if (newMode !== 'generic') {
+      setBands(allModes[newMode]?.bands ?? []);
     }
   };
 
@@ -166,7 +171,7 @@ function App() {
       <div className="panel">
         <h2>Configuration</h2>
         <FileUploader onFileSelect={handleFileSelect} />
-        <ModeSelector value={currentMode} onChange={handleModeChange} />
+        <ModeSelector value={currentMode} onChange={handleModeChange} modes={allModes} />
         {file && <p className="file-info">Selected: {file.name}</p>}
       </div>
 

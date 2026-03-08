@@ -12,13 +12,28 @@
   "animal": {
     "bands": [
       { "id": "low_calls", "label": "Low Calls", "min_hz": 50, "max_hz": 500 },
-      { "id": "mid_calls", "label": "Mid Calls", "min_hz": 500, "max_hz": 3000 },
+      {
+        "id": "lion_roar",
+        "label": "Lion Roar",
+        "ranges": [
+          { "min_hz": 80,  "max_hz": 400  },
+          { "min_hz": 800, "max_hz": 2000 }
+        ]
+      },
       { "id": "high_calls", "label": "High Calls", "min_hz": 3000, "max_hz": 12000 }
     ]
   },
   "human": {
     "bands": [
       { "id": "low_voice", "label": "Low Voice", "min_hz": 80, "max_hz": 300 },
+      {
+        "id": "vocal_fry",
+        "label": "Vocal Fry & Nasality",
+        "ranges": [
+          { "min_hz": 70,   "max_hz": 150  },
+          { "min_hz": 1000, "max_hz": 2000 }
+        ]
+      },
       { "id": "formants", "label": "Formants", "min_hz": 300, "max_hz": 3400 },
       { "id": "sibilance", "label": "Sibilance", "min_hz": 3400, "max_hz": 8000 }
     ]

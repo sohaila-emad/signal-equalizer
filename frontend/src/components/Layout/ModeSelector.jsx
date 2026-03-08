@@ -1,34 +1,4 @@
-import { useEffect, useState } from 'react';
-import { getModes } from '../../services/api';
-
-export default function ModeSelector({ value, onChange }) {
-  const [modes, setModes] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    const fetchModes = async () => {
-      try {
-        const modesData = await getModes();
-        setModes(modesData);
-        setLoading(false);
-      } catch (err) {
-        console.error('Failed to load modes:', err);
-        setError(err.message);
-        setLoading(false);
-      }
-    };
-    fetchModes();
-  }, []);
-
-  if (loading) {
-    return <div>Loading modes...</div>;
-  }
-
-  if (error) {
-    return <div>Error loading modes: {error}</div>;
-  }
-
+export default function ModeSelector({ value, onChange, modes = {} }) {
   return (
     <div className="field">
       <label htmlFor="mode">Mode:</label>

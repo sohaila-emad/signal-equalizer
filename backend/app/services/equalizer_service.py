@@ -18,7 +18,10 @@ def apply_equalizer(
     sample_rate : float
         Sampling rate in Hz.
     bands : List[Dict]
-        List of band dictionaries with keys: id, min_hz, max_hz.
+        List of band dictionaries. Each band must have an ``id`` and either:
+        - ``min_hz`` / ``max_hz`` for a single contiguous range, or
+        - ``ranges``: a list of ``{min_hz, max_hz}`` dicts for multiple
+          non-contiguous frequency ranges that share the same gain slider.
     weights : Dict[str, float]
         Mapping from band id -> gain multiplier.
 
@@ -42,12 +45,20 @@ def apply_equalizer(
         if band_id is None:
             continue
         gain = float(weights.get(band_id, 1.0))
-        f_min = float(band.get("min_hz", 0.0))
-        f_max = float(band.get("max_hz", sample_rate / 2.0))
 
-        # Apply gain to frequencies in this band
-        mask = (freqs >= f_min) & (freqs < f_max)
-        equalized_spectrum[mask] *= gain
+        # Support both multi-range ("ranges" list) and single-range ("min_hz"/"max_hz")
+        ranges = band.get("ranges")
+        if ranges:
+            for r in ranges:
+                f_min = float(r.get("min_hz", 0.0))
+                f_max = float(r.get("max_hz", sample_rate / 2.0))
+                mask = (freqs >= f_min) & (freqs < f_max)
+                equalized_spectrum[mask] *= gain
+        else:
+            f_min = float(band.get("min_hz", 0.0))
+            f_max = float(band.get("max_hz", sample_rate / 2.0))
+            mask = (freqs >= f_min) & (freqs < f_max)
+            equalized_spectrum[mask] *= gain
 
     # Convert back to time domain
     equalized_signal = np.fft.irfft(equalized_spectrum, n=N)

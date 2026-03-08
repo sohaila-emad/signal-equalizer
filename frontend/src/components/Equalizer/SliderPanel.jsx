@@ -113,13 +113,14 @@ export default function SliderPanel({ mode, bands, onBandsChange, weights, onWei
         {bands.length === 0 && <p>No bands defined for this mode.</p>}
         {bands.map((band) => {
           const value = weights[band.id] === null || weights[band.id] === undefined ? 1 : weights[band.id];
+          const rangeLabel = band.ranges && band.ranges.length > 0
+            ? band.ranges.map((r) => `${r.min_hz}–${r.max_hz} Hz`).join(', ')
+            : `${band.min_hz}–${band.max_hz} Hz`;
           return (
             <div key={band.id} className="slider-row">
               <div className="slider-label">
                 <strong>{band.label}</strong>
-                <span>
-                  {band.min_hz}–{band.max_hz} Hz
-                </span>
+                <span>{rangeLabel}</span>
               </div>
               <input
                 type="range"
