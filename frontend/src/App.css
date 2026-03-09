@@ -398,7 +398,38 @@ input[type='range'] {
   background: #020617;
   width: 100%;
 }
+/* ECG diagnosis panel */
+.ecg-diagnosis-panel {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  border: 1px solid #374151;
+  background: #0b1220;
+  border-radius: 0.5rem;
+}
 
+.ecg-diagnosis-panel h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.1rem;
+}
+
+.status-tag {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.375rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-top: 0.25rem;
+}
+
+.status-tag.normal {
+  background: #10b981;
+  color: #020617;
+}
+
+.status-tag.warning {
+  background: #f59e0b;
+  color: #020617;
+}
 /* Spectrogram */
 .spectrogram {
   text-align: center;
