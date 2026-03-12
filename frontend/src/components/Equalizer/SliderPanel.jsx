@@ -2,118 +2,72 @@ import { useState } from 'react';
 import BandControls from './BandControls';
 import { loadConfig, saveConfig } from '../../services/api';
 
-/**
- * SliderPanel - Handles both generic mode and customized modes
- * 
- * Generic mode: renders BandControls + Add/Save/Load buttons
- * Customized modes: renders simple labeled sliders
- */
 export default function SliderPanel({ mode, bands, onBandsChange, weights, onWeightsChange }) {
   const [saveStatus, setSaveStatus] = useState('');
-
   const isGeneric = mode === 'generic';
 
-  const handleAddBand = () => {
-    const newBand = {
-      id: `band_${Date.now()}`,
-      label: 'New Band',
-      min_hz: 0,
-      max_hz: 1000,
-      scale: 1,
-    };
-    onBandsChange([...bands, newBand]);
+  const flash = (msg) => { setSaveStatus(msg); setTimeout(() => setSaveStatus(''), 2000); };
+
+  const handleAddBand = () =>
+    onBandsChange([...bands, { id: `band_${Date.now()}`, label: `Band ${bands.length + 1}`, min_hz: 0, max_hz: 1000, scale: 1 }]);
+
+  const handleRemoveBand = (index) => onBandsChange(bands.filter((_, i) => i !== index));
+
+  const handleBandChange = (index, updated) => {
+    const next = [...bands]; next[index] = updated; onBandsChange(next);
   };
 
-  const handleRemoveBand = (index) => {
-    const newBands = bands.filter((_, i) => i !== index);
-    onBandsChange(newBands);
+  const handleSave = async () => {
+    try { flash('Saving…'); await saveConfig(bands); flash('Saved ✓'); }
+    catch { flash('Save failed'); }
   };
 
-  const handleBandChange = (index, updatedBand) => {
-    const newBands = [...bands];
-    newBands[index] = updatedBand;
-    onBandsChange(newBands);
-  };
-
-  const handleSaveConfig = async () => {
+  const handleLoad = async () => {
     try {
-      setSaveStatus('Saving...');
-      await saveConfig(bands);
-      setSaveStatus('Saved!');
-      setTimeout(() => setSaveStatus(''), 2000);
-    } catch (err) {
-      console.error('Failed to save config:', err);
-      setSaveStatus('Save failed');
-      setTimeout(() => setSaveStatus(''), 2000);
-    }
-  };
-
-  const handleLoadConfig = async () => {
-    try {
-      setSaveStatus('Loading...');
+      flash('Loading…');
       const config = await loadConfig();
       if (config.bands && Array.isArray(config.bands)) {
         onBandsChange(config.bands);
-        setSaveStatus('Loaded!');
-        // Immediately trigger uploadAndTransform with loaded bands
-        if (typeof window !== 'undefined' && window.dispatchEvent) {
-          window.dispatchEvent(new CustomEvent('bandsLoadedFromConfig', { detail: config.bands }));
-        }
-      } else {
-        setSaveStatus('No saved config');
-      }
-      setTimeout(() => setSaveStatus(''), 2000);
-    } catch (err) {
-      console.error('Failed to load config:', err);
-      setSaveStatus('Load failed');
-      setTimeout(() => setSaveStatus(''), 2000);
-    }
+        window.dispatchEvent(new CustomEvent('bandsLoadedFromConfig', { detail: config.bands }));
+        flash('Loaded ✓');
+      } else flash('No saved config');
+    } catch { flash('Load failed'); }
   };
 
-  const handleWeightChange = (bandId, value) => {
-    onWeightsChange({
-      ...weights,
-      [bandId]: value === '' ? 0 : parseFloat(value),
-    });
-  }
+  const handleWeightChange = (bandId, value) =>
+    onWeightsChange({ ...weights, [bandId]: value === '' ? 0 : parseFloat(value) });
 
   if (isGeneric) {
-    // Generic mode: full band controls
     return (
       <div className="slider-panel">
-        <h3>Custom Bands</h3>
-        {bands.length === 0 && <p>No bands defined. Click "Add Band" to create one.</p>}
+        {bands.length === 0 && (
+          <div className="no-bands">No bands defined — click Add Band to start</div>
+        )}
         {bands.map((band, index) => (
           <BandControls
             key={band.id || index}
             band={band}
-            onChange={(updated) => handleBandChange(index, updated)}
+            onChange={(u) => handleBandChange(index, u)}
             onRemove={() => handleRemoveBand(index)}
           />
         ))}
         <div className="band-actions">
-          <button type="button" onClick={handleAddBand}>
-            Add Band
-          </button>
-          <button type="button" onClick={handleSaveConfig}>
-            Save Config
-          </button>
-          <button type="button" onClick={handleLoadConfig}>
-            Load Config
-          </button>
+          <button type="button" className="btn btn-primary" onClick={handleAddBand}>+ Add Band</button>
+          <button type="button" className="btn" onClick={handleSave}>Save</button>
+          <button type="button" className="btn" onClick={handleLoad}>Load</button>
           {saveStatus && <span className="status-msg">{saveStatus}</span>}
         </div>
       </div>
     );
-  } else {
-    // Customized modes: simple sliders
-    return (
-      <div className="slider-panel">
-        <h3>Equalizer Bands</h3>
-        {bands.length === 0 && <p>No bands defined for this mode.</p>}
+  }
+
+  return (
+    <div className="slider-panel">
+      {bands.length === 0 && <div className="no-bands">No bands defined for this mode</div>}
+      <div className="sliders">
         {bands.map((band) => {
-          const value = weights[band.id] === null || weights[band.id] === undefined ? 1 : weights[band.id];
-          const rangeLabel = band.ranges && band.ranges.length > 0
+          const value = weights[band.id] ?? 1;
+          const rangeLabel = band.ranges?.length > 0
             ? band.ranges.map((r) => `${r.min_hz}–${r.max_hz} Hz`).join(', ')
             : `${band.min_hz}–${band.max_hz} Hz`;
           return (
@@ -123,18 +77,14 @@ export default function SliderPanel({ mode, bands, onBandsChange, weights, onWei
                 <span>{rangeLabel}</span>
               </div>
               <input
-                type="range"
-                min="0"
-                max="2"
-                step="0.01"
-                value={value}
+                type="range" min="0" max="2" step="0.01" value={value}
                 onChange={(e) => handleWeightChange(band.id, e.target.value)}
               />
-              <span className="slider-value">{value.toFixed(2)}x</span>
+              <span className="slider-value">{value.toFixed(2)}×</span>
             </div>
           );
         })}
       </div>
-    );
-  }
+    </div>
+  );
 }
