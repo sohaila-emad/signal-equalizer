@@ -40,10 +40,11 @@
   },
   "ecg": {
     "bands": [
-      { "id": "atrial", "label": "Atrial (P-Wave)", "min_hz": 0.5, "max_hz": 5 },
-      { "id": "ventricular", "label": "Ventricular (QRS)", "min_hz": 5, "max_hz": 40 },
-      { "id": "repolarization", "label": "T-Wave", "min_hz": 0.5, "max_hz": 10 },
-      { "id": "noise", "label": "Muscle Artifacts", "min_hz": 50, "max_hz": 100 }
+      { "id": "baseline", "label": "Baseline Wander (Breathing)", "min_hz": 0.1, "max_hz": 0.8 },
+      { "id": "p_t_waves", "label": "P & T Waves (Slow)", "min_hz": 0.8, "max_hz": 10 },
+      { "id": "qrs_complex", "label": "QRS Complex (R-Peaks)", "min_hz": 10, "max_hz": 40 },
+      { "id": "power_line", "label": "60Hz Noise (Hum)", "min_hz": 58, "max_hz": 62 },
+      { "id": "muscle_noise", "label": "High Freq Noise", "min_hz": 62, "max_hz": 150 }
     ]
-  }
+}
 }

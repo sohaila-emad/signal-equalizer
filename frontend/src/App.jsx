@@ -1,278 +1,482 @@
 import { useState, useEffect, useRef } from 'react';
 import './App.css';
-import Header from './components/Layout/Header';
-import ModeSelector from './components/Layout/ModeSelector';
-import FileUploader from './components/Layout/FileUploader';
 import SliderPanel from './components/Equalizer/SliderPanel';
 import LinkedViewers from './components/Viewers/LinkedViewers';
 import FftGraph from './components/Graphs/FftGraph';
 import Spectrogram from './components/Graphs/Spectrogram';
+import FileUploader from './components/Layout/FileUploader';
 import { uploadAndTransform, getModes } from './services/api';
+import { calculateBPM } from './utils';
 
-function App() {
-  // Core state
-  const [file, setFile] = useState(null);
-  const [currentMode, setCurrentMode] = useState('generic');
-  const [allModes, setAllModes] = useState({});
-  const [bands, setBands] = useState([]);
-  const [weights, setWeights] = useState({});
+/* ── SVG helpers ── */
+function Icon({ d, size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d={d} />
+    </svg>
+  );
+}
+function PolyIcon({ points, size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points={points} />
+    </svg>
+  );
+}
 
-  // Result state
-  const [inputSignal, setInputSignal] = useState(null);
-  const [outputSignal, setOutputSignal] = useState(null);
-  const [inputSpectrogram, setInputSpectrogram] = useState(null);
-  const [outputSpectrogram, setOutputSpectrogram] = useState(null);
-  const [fftData, setFftData] = useState(null);
-  const [sampleRate, setSampleRate] = useState(11025);
+/* ── Mode definitions (icon + label) ── */
+const MODE_META = {
+  generic: {
+    label: 'Generic',
+    icon: <Icon d="M4 6h16M8 12h8M6 18h12" />,
+    badge: 'Custom',
+  },
+  musical: {
+    label: 'Musical',
+    icon: <Icon d="M9 18V5l12-2v13M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 19a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />,
+  },
+  animal: {
+    label: 'Animal',
+    icon: <Icon d="M12 8c-1.7-2-5-2.5-6.5.5C4 11.5 5 15 8 16c1.5.5 3 .5 4 0 1 .5 2.5.5 4 0 3-1 4-4.5 2.5-7.5C17 5.5 13.7 6 12 8z" />,
+  },
+  human: {
+    label: 'Human Voice',
+    icon: <Icon d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />,
+  },
+  ecg: {
+    label: 'ECG',
+    icon: <PolyIcon points="22 12 18 12 15 21 9 3 6 12 2 12" />,
+  },
+};
+const DEFAULT_META = { label: null, icon: <Icon d="M12 12m-3 0a3 3 0 1 0 6 0 3 3 0 1 0-6 0M3 12h3M18 12h3M12 3v3M12 18v3" /> };
 
-  // UI state
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [showSpectrograms, setShowSpectrograms] = useState(true);
-  const [isAudiogram, setIsAudiogram] = useState(false);
+/* ══════════════════════════════════════
+   ZoomPanBar — restyled with new tokens
+══════════════════════════════════════ */
+function ZoomPanBar({ freqMin, freqMax, visMin, visMax, onVisChange, isAudiogram, onToggleAudiogram, disableAudiogram }) {
+  const fullSpan = freqMax - freqMin;
+  const visSpan  = visMax  - visMin;
 
-  // Fetch all mode definitions once on mount
-  useEffect(() => {
-    getModes()
-      .then((data) => setAllModes(data))
-      .catch((err) => console.error('Failed to load modes:', err));
-  }, []);
-
-  // Listen for bandsLoadedFromConfig event to trigger uploadAndTransform
-  useEffect(() => {
-    const handler = (e) => {
-      if (!file) return;
-      // Use current weights, mode, and loaded bands
-      processSignalWithBands(e.detail);
-    };
-    window.addEventListener('bandsLoadedFromConfig', handler);
-    return () => window.removeEventListener('bandsLoadedFromConfig', handler);
-  }, [file, currentMode, weights]);
-
-  const processSignalWithBands = async (bandsArg) => {
-    try {
-      setLoading(true);
-      setError(null);
-      const finalWeights = { ...weights };
-      if (currentMode === 'generic') {
-        bandsArg.forEach((band) => {
-          if (band.id) {
-            finalWeights[band.id] = (band.scale === null || band.scale === undefined) ? 1 : band.scale;
-          }
-        });
-      }
-      const result = await uploadAndTransform(file, currentMode, finalWeights, bandsArg);
-      setInputSignal(new Float32Array(result.input_audio));
-      setOutputSignal(new Float32Array(result.output_audio));
-      setSampleRate(result.sample_rate);
-      setInputSpectrogram({
-        freqs: result.spectrogram_input.freqs,
-        times: result.spectrogram_input.times,
-        values: result.spectrogram_input.values,
-      });
-      setOutputSpectrogram({
-        freqs: result.spectrogram_output.freqs,
-        times: result.spectrogram_output.times,
-        values: result.spectrogram_output.values,
-      });
-      setFftData({
-        freqs: result.fft_freqs,
-        inputMag: result.input_fft,
-        outputMag: result.output_fft,
-      });
-      setLoading(false);
-    } catch (err) {
-      console.error('Processing error:', err);
-      setError(err.message);
-      setLoading(false);
-    }
+  const zoom = (factor) => {
+    const center  = visMin + visSpan * 0.5;
+    const newSpan = Math.min(fullSpan, Math.max(fullSpan * 0.01, visSpan * factor));
+    let lo = center - newSpan * 0.5;
+    let hi = lo + newSpan;
+    if (lo < freqMin) { lo = freqMin; hi = lo + newSpan; }
+    if (hi > freqMax) { hi = freqMax; lo = hi - newSpan; }
+    onVisChange(Math.max(freqMin, lo), Math.min(freqMax, hi));
   };
 
-  // Process signal whenever file, mode, bands, or weights change
-  // Debounce for uploadAndTransform on band/slider changes
-  const debounceTimer = useRef(null);
-
-  useEffect(() => {
-    if (!file) return;
-
-    const processSignal = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        // Build weights from bands for generic mode
-        const finalWeights = { ...weights };
-        if (currentMode === 'generic') {
-          bands.forEach((band) => {
-            if (band.id) {
-              finalWeights[band.id] = (band.scale === null || band.scale === undefined) ? 1 : band.scale;
-            }
-          });
-        }
-
-        const result = await uploadAndTransform(file, currentMode, finalWeights, bands);
-
-        // Update all state from result
-        setInputSignal(new Float32Array(result.input_audio));
-        setOutputSignal(new Float32Array(result.output_audio));
-        setSampleRate(result.sample_rate);
-
-        setInputSpectrogram({
-          freqs: result.spectrogram_input.freqs,
-          times: result.spectrogram_input.times,
-          values: result.spectrogram_input.values,
-        });
-
-        setOutputSpectrogram({
-          freqs: result.spectrogram_output.freqs,
-          times: result.spectrogram_output.times,
-          values: result.spectrogram_output.values,
-        });
-
-        setFftData({
-          freqs: result.fft_freqs,
-          inputMag: result.input_fft,
-          outputMag: result.output_fft,
-        });
-
-        setLoading(false);
-      } catch (err) {
-        console.error('Processing error:', err);
-        setError(err.message);
-        setLoading(false);
-      }
-    };
-
-    // Only debounce for band/slider changes, not file upload
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    debounceTimer.current = setTimeout(() => {
-      processSignal();
-    }, 350);
-
-    return () => clearTimeout(debounceTimer.current);
-  }, [file, currentMode, bands, weights]);
-
-  const handleFileSelect = (selectedFile) => {
-    setFile(selectedFile);
+  const pan = (dir) => {
+    const step = visSpan * 0.25;
+    const lo   = Math.max(freqMin, Math.min(freqMax - visSpan, visMin + dir * step));
+    onVisChange(lo, lo + visSpan);
   };
 
-  const handleModeChange = (newMode) => {
-    setCurrentMode(newMode);
-    setWeights({});
-    if (newMode !== 'generic') {
-      setBands(allModes[newMode]?.bands ?? []);
-    }
-  };
+  const fmt = (f) => f >= 1000 ? `${(f / 1000).toFixed(1)}k` : `${Math.round(f)}`;
 
   return (
-    <div className="app">
-      <Header />
-
-      <div className="panel">
-        <h2>Configuration</h2>
-        <FileUploader onFileSelect={handleFileSelect} />
-        <ModeSelector value={currentMode} onChange={handleModeChange} modes={allModes} />
-        {file && <p className="file-info">Selected: {file.name}</p>}
+    <div className="zoom-pan-bar">
+      <button className="btn" onClick={() => zoom(1 / 1.5)}>＋ In</button>
+      <button className="btn" onClick={() => zoom(1.5)}>－ Out</button>
+      <div className="zoom-pan-sep" />
+      <button className="btn" onClick={() => pan(-1)}>◀ Left</button>
+      <button className="btn" onClick={() => pan(1)}>Right ▶</button>
+      <div className="zoom-pan-sep" />
+      <button className="btn" onClick={() => onVisChange(freqMin, freqMin + fullSpan * 0.05)}>Low Focus</button>
+      <button className="btn" onClick={() => onVisChange(freqMin, freqMax)}>Reset</button>
+      <div className="zoom-pan-sep" />
+      <button
+        className={`toggle-pill ${isAudiogram ? 'on' : ''} ${disableAudiogram ? 'disabled' : ''}`}
+        onClick={!disableAudiogram ? onToggleAudiogram : undefined}
+        disabled={disableAudiogram}
+      >
+        {isAudiogram ? 'Audiogram ✓' : 'Audiogram'}
+      </button>
+      <div className="zoom-pan-info">
+        {fmt(visMin)} – {fmt(visMax)} Hz
+        &nbsp;·&nbsp;{Math.round((visSpan / fullSpan) * 100)}%
+        {disableAudiogram && <span style={{ color: 'var(--text-dim)', marginLeft: 6 }}>ECG: linear only</span>}
       </div>
-
-      {file && (
-        <div className="panel">
-          <SliderPanel
-            mode={currentMode}
-            bands={bands}
-            onBandsChange={setBands}
-            weights={weights}
-            onWeightsChange={setWeights}
-          />
-        </div>
-      )}
-
-      {loading && (
-        <div className="panel">
-          <p>Processing...</p>
-        </div>
-      )}
-
-      {error && (
-        <div className="panel error">
-          <p>Error: {error}</p>
-        </div>
-      )}
-
-      {inputSignal && outputSignal && !loading && (
-        <>
-          <div className="panel">
-            <LinkedViewers
-              inputSignal={inputSignal}
-              outputSignal={outputSignal}
-              sampleRate={sampleRate}
-            />
-          </div>
-
-          <div className="panel">
-            <div className="panel-header">
-              <h2>Frequency Analysis</h2>
-              <button
-                type="button"
-                onClick={() => setIsAudiogram((prev) => !prev)}
-              >
-                Switch to {isAudiogram ? 'Linear Scale' : 'Audiogram Scale'}
-              </button>
-            </div>
-            <div className="graph-grid">
-              {fftData && (
-                <FftGraph
-                  freqs={fftData.freqs}
-                  inputMag={fftData.inputMag}
-                  outputMag={fftData.outputMag}
-                  isAudiogram={isAudiogram}
-                  bands={bands}
-                  label="Input/Output FFT"
-                />
-              )}
-            </div>
-          </div>
-
-          {showSpectrograms && (
-            <div className="panel">
-              <div className="panel-header">
-                <h2>Spectrograms</h2>
-                <button type="button" onClick={() => setShowSpectrograms(false)}>
-                  Hide
-                </button>
-              </div>
-              <div className="spectrogram-grid">
-                {inputSpectrogram && (
-                  <Spectrogram
-                    freqs={inputSpectrogram.freqs}
-                    times={inputSpectrogram.times}
-                    data={inputSpectrogram.values}
-                    label="Input"
-                  />
-                )}
-                {outputSpectrogram && (
-                  <Spectrogram
-                    freqs={outputSpectrogram.freqs}
-                    times={outputSpectrogram.times}
-                    data={outputSpectrogram.values}
-                    label="Output"
-                  />
-                )}
-              </div>
-            </div>
-          )}
-
-          {!showSpectrograms && (
-            <div className="panel">
-              <button type="button" onClick={() => setShowSpectrograms(true)}>
-                Show Spectrograms
-              </button>
-            </div>
-          )}
-        </>
-      )}
     </div>
   );
 }
 
-export default App;
+/* ══════════════════════════════════════
+   App
+══════════════════════════════════════ */
+export default function App() {
+  const [file,              setFile]              = useState(null);
+  const [currentMode,       setCurrentMode]       = useState('generic');
+  const [allModes,          setAllModes]          = useState({});
+  const [bands,             setBands]             = useState([]);
+  const [weights,           setWeights]           = useState({});
+
+  const [inputSignal,       setInputSignal]       = useState(null);
+  const [outputSignal,      setOutputSignal]      = useState(null);
+  const [inputSpectrogram,  setInputSpectrogram]  = useState(null);
+  const [outputSpectrogram, setOutputSpectrogram] = useState(null);
+  const [fftData,           setFftData]           = useState(null);
+  const [sampleRate,        setSampleRate]        = useState(11025);
+
+  const [loading,           setLoading]           = useState(false);
+  const [error,             setError]             = useState(null);
+  const [showSpectrograms,  setShowSpectrograms]  = useState(true);
+  const [isAudiogram,       setIsAudiogram]       = useState(false);
+  const [ecgAnalysis,       setEcgAnalysis]       = useState({ bpm: null, type: null });
+
+  const [freqRange, setFreqRange] = useState({ min: 0, max: 5000 });
+  const [visFreq,   setVisFreq]   = useState({ min: 0, max: 5000 });
+
+  const prevFftIdRef  = useRef(null);
+  const debounceTimer = useRef(null);
+
+  /* ── Load modes ── */
+  useEffect(() => {
+    getModes().then(setAllModes).catch(() => setError('Failed to load modes from server.'));
+  }, []);
+
+  /* ── Set freq range when new FFT data arrives ── */
+  useEffect(() => {
+    if (!fftData?.freqs?.length) return;
+    const id = fftData.freqs.length + '_' + fftData.freqs[fftData.freqs.length - 1];
+    if (id === prevFftIdRef.current) return;
+    prevFftIdRef.current = id;
+    const max = Math.max(...fftData.freqs);
+    setFreqRange({ min: 0, max });
+    setVisFreq({ min: 0, max });
+  }, [fftData]);
+
+  /* ── Clamp visFreq.min when audiogram toggled ── */
+  useEffect(() => {
+    if (isAudiogram && visFreq.min < 20) {
+      setVisFreq((v) => ({ ...v, min: 20 }));
+      setFreqRange((r) => ({ ...r, min: 20 }));
+    } else if (!isAudiogram) {
+      setFreqRange((r) => ({ ...r, min: 0 }));
+    }
+  }, [isAudiogram]);
+
+  /* ── bandsLoadedFromConfig event ── */
+  useEffect(() => {
+    const handler = (e) => { if (file) processSignalWithBands(e.detail); };
+    window.addEventListener('bandsLoadedFromConfig', handler);
+    return () => window.removeEventListener('bandsLoadedFromConfig', handler);
+  }, [file, currentMode, weights]);
+
+  const applyResult = (result) => {
+    setInputSignal(new Float32Array(result.input_audio));
+    setOutputSignal(new Float32Array(result.output_audio));
+    setSampleRate(result.sample_rate);
+
+    if (currentMode === 'ecg') {
+      const analysis = calculateBPM(new Float32Array(result.output_audio), result.sample_rate);
+      setEcgAnalysis(analysis || { bpm: null, type: 'Unknown' });
+    } else {
+      setEcgAnalysis({ bpm: null, type: null });
+    }
+
+    setInputSpectrogram({
+      freqs: result.spectrogram_input.freqs,
+      times: result.spectrogram_input.times,
+      values: result.spectrogram_input.values,
+    });
+    setOutputSpectrogram({
+      freqs: result.spectrogram_output.freqs,
+      times: result.spectrogram_output.times,
+      values: result.spectrogram_output.values,
+    });
+    setFftData({
+      freqs:    result.fft_freqs,
+      inputMag: result.input_fft,
+      outputMag: result.output_fft,
+    });
+    setLoading(false);
+  };
+
+  const processSignalWithBands = async (bandsArg) => {
+    try {
+      setLoading(true); setError(null);
+      const fw = { ...weights };
+      if (currentMode === 'generic') bandsArg.forEach((b) => { if (b.id) fw[b.id] = b.scale ?? 1; });
+      const result = await uploadAndTransform(file, currentMode, fw, bandsArg);
+      applyResult(result);
+    } catch (err) {
+      setError(err.message); setLoading(false);
+    }
+  };
+
+  /* ── Debounced processing ── */
+  useEffect(() => {
+    if (!file) return;
+    const run = async () => {
+      try {
+        setLoading(true); setError(null);
+        const fw = { ...weights };
+        if (currentMode === 'generic') bands.forEach((b) => { if (b.id) fw[b.id] = b.scale ?? 1; });
+        const result = await uploadAndTransform(file, currentMode, fw, bands);
+        applyResult(result);
+      } catch (err) { setError(err.message); setLoading(false); }
+    };
+    clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(run, 350);
+    return () => clearTimeout(debounceTimer.current);
+  }, [file, currentMode, bands, weights]);
+
+  const handleModeChange = (newMode) => {
+    setCurrentMode(newMode);
+    setWeights({});
+    setEcgAnalysis({ bpm: null, type: null });
+    if (newMode === 'ecg') setIsAudiogram(false);
+    if (newMode !== 'generic') setBands(allModes[newMode]?.bands ?? []);
+    else setBands([]);
+  };
+
+  const isEcg     = currentMode === 'ecg';
+  const hasResults = inputSignal && outputSignal && !loading;
+
+  /* ── Mode tab list ── */
+  const modeEntries = [
+    ['generic', { label: 'Generic' }],
+    ...Object.entries(allModes),
+  ];
+
+  const statusClass = loading ? 'processing' : error ? 'error' : file ? 'ready' : '';
+  const statusText  = loading ? 'Processing…'  : error ? 'Error'   : file ? 'Ready'  : 'No file loaded';
+
+  return (
+    <div className="app-layout">
+
+      {/* ═══ SIDEBAR ═══ */}
+      <aside className="sidebar">
+
+        <div className="sidebar-brand">
+          <div className="brand-row">
+            <div className="brand-pulse" />
+            <span className="brand-name">Equalizer</span>
+          </div>
+          <div className="brand-sub">Signal Processing Studio</div>
+        </div>
+
+        <div className="sidebar-upload">
+          <span className="sidebar-section-label">Audio Source</span>
+          <FileUploader onFileSelect={setFile} file={file} />
+        </div>
+
+        <nav className="sidebar-modes">
+          <span className="sidebar-section-label" style={{ padding: '0 16px', display: 'block', marginBottom: 6 }}>
+            Mode
+          </span>
+          {modeEntries.map(([key, cfg]) => {
+            const meta  = MODE_META[key] || { ...DEFAULT_META, label: cfg.label || key };
+            const label = meta.label || cfg.label || key;
+            return (
+              <button
+                key={key}
+                type="button"
+                className={`mode-tab ${currentMode === key ? 'active' : ''}`}
+                onClick={() => handleModeChange(key)}
+              >
+                <span className="mode-tab-icon">{meta.icon}</span>
+                <span>{label}</span>
+                {meta.badge && <span className="mode-tab-badge">{meta.badge}</span>}
+              </button>
+            );
+          })}
+        </nav>
+
+        <div className="sidebar-status">
+          <div className="status-row">
+            <div className={`status-dot ${statusClass}`} />
+            {statusText}
+            {file && !loading && !error && (
+              <span className="status-size">{(file.size / 1024).toFixed(0)} KB</span>
+            )}
+          </div>
+        </div>
+      </aside>
+
+      {/* ═══ MAIN ═══ */}
+      <main className="main-content">
+
+        {error && (
+          <div className="error-card">
+            <Icon d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01" />
+            {error}
+            <button className="error-dismiss" onClick={() => setError(null)}>✕</button>
+          </div>
+        )}
+
+        {/* No file */}
+        {!file && (
+          <div className="section-card">
+            <div className="empty-state">
+              <div className="empty-icon">
+                <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+              </div>
+              <p>Upload a <strong style={{ color: 'var(--text-mid)' }}>WAV file</strong> from the sidebar<br />then adjust the equalizer bands</p>
+            </div>
+          </div>
+        )}
+
+        {/* Equalizer bands */}
+        {file && (
+          <div className="section-card">
+            <div className="section-head">
+              <div className="section-head-left">
+                <span className="section-icon">
+                  <Icon d="M4 6h16M8 12h8M6 18h12" />
+                </span>
+                <span className="section-title">
+                  {currentMode === 'generic'
+                    ? 'Custom Frequency Bands'
+                    : `${allModes[currentMode]?.label || currentMode} — Equalizer`}
+                </span>
+              </div>
+            </div>
+            <div className="section-body">
+              <SliderPanel
+                mode={currentMode}
+                bands={bands}
+                onBandsChange={setBands}
+                weights={weights}
+                onWeightsChange={setWeights}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Loading */}
+        {loading && (
+          <div className="loading-card">
+            <div className="eq-bars">
+              {[...Array(7)].map((_, i) => <div key={i} className="eq-bar" />)}
+            </div>
+            <div className="loading-text">Analyzing signal…</div>
+          </div>
+        )}
+
+        {/* Results */}
+        {hasResults && (
+          <>
+            {/* Waveforms */}
+            <div className="section-card">
+              <div className="section-head">
+                <div className="section-head-left">
+                  <span className="section-icon">
+                    <Icon d="M2 12h3l3-8 4 16 3-8h3" />
+                  </span>
+                  <span className="section-title">Waveform Comparison</span>
+                </div>
+              </div>
+              <div className="section-body">
+                <LinkedViewers
+                  inputSignal={inputSignal}
+                  outputSignal={outputSignal}
+                  sampleRate={sampleRate}
+                />
+                {isEcg && ecgAnalysis.bpm !== null && (
+                  <div className="ecg-diagnosis-panel">
+                    <h3>ECG Analysis</h3>
+                    <p>Heart Rate: <strong>{ecgAnalysis.bpm} BPM</strong></p>
+                    <span className={`status-tag ${ecgAnalysis.type === 'Normal' ? 'normal' : 'warning'}`}>
+                      {ecgAnalysis.type}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* FFT */}
+            <div className="section-card">
+              <div className="section-head">
+                <div className="section-head-left">
+                  <span className="section-icon">
+                    <Icon d="M3 3v18h18M7 16l4-8 4 8" />
+                  </span>
+                  <span className="section-title">Frequency Analysis</span>
+                </div>
+              </div>
+              <div className="section-body">
+                <ZoomPanBar
+                  freqMin={freqRange.min}
+                  freqMax={freqRange.max}
+                  visMin={visFreq.min}
+                  visMax={visFreq.max}
+                  onVisChange={(lo, hi) => setVisFreq({ min: lo, max: hi })}
+                  isAudiogram={isAudiogram}
+                  onToggleAudiogram={() => setIsAudiogram((p) => !p)}
+                  disableAudiogram={isEcg}
+                />
+                {fftData && (
+                  <FftGraph
+                    freqs={fftData.freqs}
+                    inputMag={fftData.inputMag}
+                    outputMag={fftData.outputMag}
+                    isAudiogram={isAudiogram}
+                    bands={bands}
+                    minFreq={visFreq.min}
+                    maxFreq={visFreq.max}
+                    label=""
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* Spectrograms */}
+            <div className="section-card">
+              <div className="section-head">
+                <div className="section-head-left">
+                  <span className="section-icon">
+                    <Icon d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z" />
+                  </span>
+                  <span className="section-title">Spectrograms</span>
+                </div>
+                <div className="graph-controls">
+                  <button
+                    type="button"
+                    className="toggle-pill"
+                    onClick={() => setShowSpectrograms((p) => !p)}
+                  >
+                    {showSpectrograms ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+              </div>
+              {showSpectrograms && (
+                <div className="section-body">
+                  <div className="spectrogram-grid">
+                    {inputSpectrogram && (
+                      <Spectrogram
+                        freqs={inputSpectrogram.freqs}
+                        times={inputSpectrogram.times}
+                        data={inputSpectrogram.values}
+                        minFreq={visFreq.min}
+                        maxFreq={visFreq.max}
+                        label="Input"
+                      />
+                    )}
+                    {outputSpectrogram && (
+                      <Spectrogram
+                        freqs={outputSpectrogram.freqs}
+                        times={outputSpectrogram.times}
+                        data={outputSpectrogram.values}
+                        minFreq={visFreq.min}
+                        maxFreq={visFreq.max}
+                        label="Output"
+                      />
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </main>
+    </div>
+  );
+}
