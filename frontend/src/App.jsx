@@ -6,7 +6,7 @@ import FftGraph from './components/Graphs/FftGraph';
 import Spectrogram from './components/Graphs/Spectrogram';
 import FileUploader from './components/Layout/FileUploader';
 import { uploadAndTransform, getModes } from './services/api';
-import { calculateBPM } from './utils';
+import { calculateBPM, downloadWav } from './utils'; // Ensure downloadWav is exported from utils.js
 
 /* ── SVG helpers ── */
 function Icon({ d, size = 14 }) {
@@ -52,9 +52,7 @@ const MODE_META = {
 };
 const DEFAULT_META = { label: null, icon: <Icon d="M12 12m-3 0a3 3 0 1 0 6 0 3 3 0 1 0-6 0M3 12h3M18 12h3M12 3v3M12 18v3" /> };
 
-/* ══════════════════════════════════════
-   ZoomPanBar — restyled with new tokens
-══════════════════════════════════════ */
+/* ── ZoomPanBar ── */
 function ZoomPanBar({ freqMin, freqMax, visMin, visMax, onVisChange, isAudiogram, onToggleAudiogram, disableAudiogram }) {
   const fullSpan = freqMax - freqMin;
   const visSpan  = visMax  - visMin;
@@ -104,28 +102,25 @@ function ZoomPanBar({ freqMin, freqMax, visMin, visMax, onVisChange, isAudiogram
   );
 }
 
-/* ══════════════════════════════════════
-   App
-══════════════════════════════════════ */
 export default function App() {
-  const [file,              setFile]              = useState(null);
-  const [currentMode,       setCurrentMode]       = useState('generic');
-  const [allModes,          setAllModes]          = useState({});
-  const [bands,             setBands]             = useState([]);
-  const [weights,           setWeights]           = useState({});
+  const [file,               setFile]               = useState(null);
+  const [currentMode,        setCurrentMode]        = useState('generic');
+  const [allModes,           setAllModes]           = useState({});
+  const [bands,              setBands]              = useState([]);
+  const [weights,            setWeights]            = useState({});
 
-  const [inputSignal,       setInputSignal]       = useState(null);
-  const [outputSignal,      setOutputSignal]      = useState(null);
-  const [inputSpectrogram,  setInputSpectrogram]  = useState(null);
-  const [outputSpectrogram, setOutputSpectrogram] = useState(null);
-  const [fftData,           setFftData]           = useState(null);
-  const [sampleRate,        setSampleRate]        = useState(11025);
+  const [inputSignal,        setInputSignal]        = useState(null);
+  const [outputSignal,       setOutputSignal]       = useState(null);
+  const [inputSpectrogram,   setInputSpectrogram]   = useState(null);
+  const [outputSpectrogram,  setOutputSpectrogram]  = useState(null);
+  const [fftData,            setFftData]            = useState(null);
+  const [sampleRate,         setSampleRate]         = useState(11025);
 
-  const [loading,           setLoading]           = useState(false);
-  const [error,             setError]             = useState(null);
-  const [showSpectrograms,  setShowSpectrograms]  = useState(true);
-  const [isAudiogram,       setIsAudiogram]       = useState(false);
-  const [ecgAnalysis,       setEcgAnalysis]       = useState({ bpm: null, type: null });
+  const [loading,            setLoading]            = useState(false);
+  const [error,              setError]              = useState(null);
+  const [showSpectrograms,   setShowSpectrograms]   = useState(true);
+  const [isAudiogram,        setIsAudiogram]        = useState(false);
+  const [ecgAnalysis,        setEcgAnalysis]        = useState({ bpm: null, type: null });
 
   const [freqRange, setFreqRange] = useState({ min: 0, max: 5000 });
   const [visFreq,   setVisFreq]   = useState({ min: 0, max: 5000 });
@@ -234,10 +229,15 @@ export default function App() {
     else setBands([]);
   };
 
+  const handleExport = () => {
+    if (!outputSignal || !sampleRate) return;
+    const newName = file ? file.name.replace('.wav', '_eq.wav') : 'equalized_output.wav';
+    downloadWav(outputSignal, sampleRate, newName);
+  };
+
   const isEcg     = currentMode === 'ecg';
   const hasResults = inputSignal && outputSignal && !loading;
 
-  /* ── Mode tab list ── */
   const modeEntries = [
     ['generic', { label: 'Generic' }],
     ...Object.entries(allModes),
@@ -295,6 +295,17 @@ export default function App() {
               <span className="status-size">{(file.size / 1024).toFixed(0)} KB</span>
             )}
           </div>
+          {/* Integrated Export Button here in the sidebar */}
+          {hasResults && (
+            <button 
+              className="btn btn-primary" 
+              onClick={handleExport} 
+              style={{ width: '100%', marginTop: 12, justifyContent: 'center' }}
+            >
+              <Icon d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+              Export WAV
+            </button>
+          )}
         </div>
       </aside>
 
