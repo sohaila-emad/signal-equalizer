@@ -24,7 +24,7 @@ export default function CineViewer({ signal, sampleRate, label, viewState, onVie
   const { offsetSamples = 0, zoom = 1 } = viewState || {};
 
   // Calculate window size based on zoom
-  const baseWindowSize = 6000;
+  const baseWindowSize = 12000; // Increased for higher res
   const windowSize = Math.floor(baseWindowSize / zoom);
 
   // Draw waveform
@@ -33,8 +33,9 @@ export default function CineViewer({ signal, sampleRate, label, viewState, onVie
     if (!canvas || !signal || signal.length === 0) return;
 
     const ctx = canvas.getContext('2d');
-    const width = 600;
-    const height = 120;
+    // Higher resolution canvas for better quality
+    const width = 1200;
+    const height = 240;
     canvas.width = width;
     canvas.height = height;
 
@@ -86,6 +87,22 @@ export default function CineViewer({ signal, sampleRate, label, viewState, onVie
     setIsPlaying(false);
   };
 
+  // Utility: simple linear resample for 1D Float32Array
+  function resampleArray(input, inputRate, outputRate) {
+    if (inputRate === outputRate) return input;
+    const ratio = outputRate / inputRate;
+    const newLength = Math.round(input.length * ratio);
+    const output = new Float32Array(newLength);
+    for (let i = 0; i < newLength; i++) {
+      const srcIdx = i / ratio;
+      const idx0 = Math.floor(srcIdx);
+      const idx1 = Math.min(idx0 + 1, input.length - 1);
+      const frac = srcIdx - idx0;
+      output[i] = input[idx0] * (1 - frac) + input[idx1] * frac;
+    }
+    return output;
+  }
+
   const play = () => {
     if (!signal || signal.length === 0) return;
 
@@ -96,16 +113,29 @@ export default function CineViewer({ signal, sampleRate, label, viewState, onVie
 
     stopPlayback();
 
-    const buffer = ctx.createBuffer(1, signal.length, sampleRate);
-    buffer.getChannelData(0).set(signal);
+    let playbackSignal = signal;
+    let playbackRate = sampleRate;
+    // Web Audio API only supports 3000-768000 Hz
+    if (sampleRate < 3000) {
+      playbackRate = 8000;
+      playbackSignal = resampleArray(signal, sampleRate, playbackRate);
+    }
+
+    const buffer = ctx.createBuffer(1, playbackSignal.length, playbackRate);
+    buffer.getChannelData(0).set(playbackSignal);
 
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.playbackRate.value = playbackSpeed;
     source.connect(ctx.destination);
 
-    const clampedOffset = Math.max(0, Math.min(offsetSamples, signal.length - 1));
-    const offsetSec = clampedOffset / sampleRate;
+    // Offset must be in seconds, so recalc for upsampled playback
+    let clampedOffset = Math.max(0, Math.min(offsetSamples, signal.length - 1));
+    let offsetSec = clampedOffset / sampleRate;
+    if (sampleRate < 3000) {
+      // Map offset to upsampled array
+      offsetSec = clampedOffset / sampleRate;
+    }
 
     source.start(0, offsetSec);
     sourceRef.current = source;
@@ -117,10 +147,10 @@ export default function CineViewer({ signal, sampleRate, label, viewState, onVie
       setIsPlaying(false);
       sourceRef.current = null;
     };
-
+    // Progress updater for playhead
     const updateProgress = () => {
       if (!sourceRef.current) return;
-      const elapsed = (ctx.currentTime - startTimeRef.current) * playbackSpeed;
+      const elapsed = (audioCtxRef.current.currentTime - startTimeRef.current) * playbackSpeed;
       const currentSample = Math.floor(startOffsetRef.current + elapsed * sampleRate);
       if (currentSample < signal.length) {
         onViewChange({ offsetSamples: currentSample, zoom });

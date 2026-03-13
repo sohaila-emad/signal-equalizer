@@ -8,6 +8,20 @@
       { "id": "presence", "label": "Presence", "min_hz": 4000, "max_hz": 6000 },
       { "id": "brilliance", "label": "Brilliance", "min_hz": 6000, "max_hz": 20000 }
     ]
+  ,
+    "wavelet_config": {
+      "wavelet": "db8",
+      "levels": 6,
+      "band_labels": {
+        "level_1": "Brilliance",
+        "level_2": "Presence",
+        "level_3": "High Mid",
+        "level_4": "Low Mid",
+        "level_5": "Bass",
+        "level_6": "Sub Bass",
+        "approx":  "Deep Sub"
+      }
+    }
   },
   "animal": {
     "bands": [
@@ -22,6 +36,19 @@
       },
       { "id": "high_calls", "label": "High Calls", "min_hz": 3000, "max_hz": 12000 }
     ]
+  ,
+    "wavelet_config": {
+      "wavelet": "db6",
+      "levels": 5,
+      "band_labels": {
+        "level_1": "High Calls",
+        "level_2": "Mid-High Calls",
+        "level_3": "Mid Calls",
+        "level_4": "Low-Mid Calls",
+        "level_5": "Low Calls",
+        "approx":  "Infrasound"
+      }
+    }
   },
   "human": {
     "bands": [
@@ -37,6 +64,19 @@
       { "id": "formants", "label": "Formants", "min_hz": 300, "max_hz": 3400 },
       { "id": "sibilance", "label": "Sibilance", "min_hz": 3400, "max_hz": 8000 }
     ]
+  ,
+    "wavelet_config": {
+      "wavelet": "sym4",
+      "levels": 5,
+      "band_labels": {
+        "level_1": "Sibilance",
+        "level_2": "Formants High",
+        "level_3": "Formants Low",
+        "level_4": "Voice Fundamental",
+        "level_5": "Low Voice",
+        "approx":  "Sub-vocal"
+      }
+    }
   },
   "ecg": {
     "bands": [
@@ -46,5 +86,25 @@
       { "id": "power_line", "label": "60Hz Noise (Hum)", "min_hz": 58, "max_hz": 62 },
       { "id": "muscle_noise", "label": "High Freq Noise", "min_hz": 62, "max_hz": 150 }
     ]
-}
+  ,
+    "wavelet_config": {
+      "wavelet": "db4",
+      "levels": 4,
+      "band_labels": {
+        "level_1": "Muscle Noise",
+        "level_2": "QRS Complex",
+        "level_3": "P & T Waves",
+        "level_4": "Baseline Wander",
+        "approx":  "DC Component"
+      }
+    }
+  },
+  "generic": {
+    "bands": [],
+    "wavelet_config": {
+      "wavelet": "db4",
+      "levels": 4,
+      "band_labels": {}
+    }
+  }
 }

@@ -1,6 +1,9 @@
 import numpy as np
 from typing import Dict, Any, List
 
+# Wavelet equalization import
+import pywt
+
 def apply_equalizer(
     signal: np.ndarray,
     sample_rate: float,
@@ -56,3 +59,45 @@ def apply_equalizer(
     equalized_signal = np.clip(equalized_signal, -1.0, 1.0)
 
     return equalized_signal.astype(np.float32)
+
+
+# --- DWT-based Equalization ---
+def apply_wavelet_equalizer(
+    signal: np.ndarray,
+    sample_rate: float,
+    wavelet: str,
+    levels: int,
+    wavelet_weights: Dict[str, float],
+) -> np.ndarray:
+    """
+    DWT-based equalization. Decomposes signal into `levels` levels using
+    the specified wavelet, scales each level's coefficients by the
+    corresponding weight, then reconstructs.
+    wavelet_weights keys are "level_1", "level_2", ... "level_N"
+    where level_1 = highest frequency detail coefficients.
+    approximation coefficients key = "approx"
+    """
+    # Clamp levels to max allowed by signal length and wavelet
+    max_level = pywt.dwt_max_level(len(signal), pywt.Wavelet(wavelet).dec_len)
+    levels = min(levels, max_level)
+    if levels < 1:
+        levels = 1
+
+    coeffs = pywt.wavedec(signal, wavelet, level=levels)
+    # coeffs: [cA_n, cD_n, cD_{n-1}, ..., cD_1]
+    scaled_coeffs = []
+    for i, arr in enumerate(coeffs):
+        if i == 0:
+            # Approximation coefficients
+            weight = float(wavelet_weights.get("approx", 1.0))
+            scaled_coeffs.append(arr * weight)
+        else:
+            # Detail coefficients: cD_n is level_n, cD_1 is level_1
+            level_id = f"level_{levels - i + 1}"
+            weight = float(wavelet_weights.get(level_id, 1.0))
+            scaled_coeffs.append(arr * weight)
+
+    eq_signal = pywt.waverec(scaled_coeffs, wavelet)
+    eq_signal = eq_signal[:len(signal)]  # Crop to original length
+    eq_signal = np.clip(eq_signal, -1.0, 1.0)
+    return eq_signal.astype(np.float32)

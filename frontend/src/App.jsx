@@ -2,6 +2,15 @@ import { useState, useEffect, useRef } from 'react';
 import './App.css';
 import SliderPanel from './components/Equalizer/SliderPanel';
 import LinkedViewers from './components/Viewers/LinkedViewers';
+import TripleViewers from './components/Viewers/TripleViewers';
+// Wavelet dropdown options
+const WAVELET_OPTIONS = [
+  { value: 'db4',  label: 'db4 (ECG)' },
+  { value: 'db6',  label: 'db6 (Animal)' },
+  { value: 'db8',  label: 'db8 (Musical)' },
+  { value: 'sym4', label: 'sym4 (Human Voice)' },
+  { value: 'haar', label: 'haar (Generic/Simple)' },
+];
 import FftGraph from './components/Graphs/FftGraph';
 import Spectrogram from './components/Graphs/Spectrogram';
 import FileUploader from './components/Layout/FileUploader';
@@ -108,11 +117,22 @@ function ZoomPanBar({ freqMin, freqMax, visMin, visMax, onVisChange, isAudiogram
    App
 ══════════════════════════════════════ */
 export default function App() {
+
   const [file,              setFile]              = useState(null);
   const [currentMode,       setCurrentMode]       = useState('generic');
   const [allModes,          setAllModes]          = useState({});
   const [bands,             setBands]             = useState([]);
   const [weights,           setWeights]           = useState({});
+
+  // Wavelet pipeline state
+  const [waveletWeights,     setWaveletWeights]     = useState({});
+  const [waveletLevelBands,  setWaveletLevelBands]  = useState([]);
+  const [waveletConfigUsed,  setWaveletConfigUsed]  = useState(null);
+  const [outputWavelet,      setOutputWavelet]      = useState(null);
+  const [waveletType,        setWaveletType]        = useState('db4');
+  const [waveletLevels,      setWaveletLevels]      = useState(4);
+  const [fftBandsOpen,       setFftBandsOpen]       = useState(true);
+  const [waveletBandsOpen,   setWaveletBandsOpen]   = useState(true);
 
   const [inputSignal,       setInputSignal]       = useState(null);
   const [outputSignal,      setOutputSignal]      = useState(null);
@@ -129,6 +149,9 @@ export default function App() {
 
   const [freqRange, setFreqRange] = useState({ min: 0, max: 5000 });
   const [visFreq,   setVisFreq]   = useState({ min: 0, max: 5000 });
+
+  // Shared view state for TripleViewers
+  const [viewState, setViewState] = useState({});
 
   const prevFftIdRef  = useRef(null);
   const debounceTimer = useRef(null);
@@ -193,6 +216,12 @@ export default function App() {
       inputMag: result.input_fft,
       outputMag: result.output_fft,
     });
+
+    // --- Wavelet pipeline fields ---
+    setOutputWavelet(result.output_wavelet_audio ? new Float32Array(result.output_wavelet_audio) : null);
+    setWaveletLevelBands(result.wavelet_level_bands || []);
+    setWaveletConfigUsed(result.wavelet_config_used || null);
+
     setLoading(false);
   };
 
@@ -201,7 +230,15 @@ export default function App() {
       setLoading(true); setError(null);
       const fw = { ...weights };
       if (currentMode === 'generic') bandsArg.forEach((b) => { if (b.id) fw[b.id] = b.scale ?? 1; });
-      const result = await uploadAndTransform(file, currentMode, fw, bandsArg);
+      const result = await uploadAndTransform(
+        file,
+        currentMode,
+        fw,
+        bandsArg,
+        waveletWeights,
+        waveletType,
+        waveletLevels
+      );
       applyResult(result);
     } catch (err) {
       setError(err.message); setLoading(false);
@@ -216,32 +253,51 @@ export default function App() {
         setLoading(true); setError(null);
         const fw = { ...weights };
         if (currentMode === 'generic') bands.forEach((b) => { if (b.id) fw[b.id] = b.scale ?? 1; });
-        const result = await uploadAndTransform(file, currentMode, fw, bands);
+        const result = await uploadAndTransform(
+          file,
+          currentMode,
+          fw,
+          bands,
+          waveletWeights,
+          waveletType,
+          waveletLevels
+        );
         applyResult(result);
       } catch (err) { setError(err.message); setLoading(false); }
     };
     clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(run, 350);
     return () => clearTimeout(debounceTimer.current);
-  }, [file, currentMode, bands, weights]);
+  }, [file, currentMode, bands, weights, waveletWeights, waveletType, waveletLevels]);
 
   const handleModeChange = (newMode) => {
     setCurrentMode(newMode);
     setWeights({});
     setEcgAnalysis({ bpm: null, type: null });
+    setWaveletWeights({});
     if (newMode === 'ecg') setIsAudiogram(false);
     if (newMode !== 'generic') setBands(allModes[newMode]?.bands ?? []);
     else setBands([]);
+    // Set wavelet type/levels from mode config
+    const wcfg = allModes[newMode]?.wavelet_config;
+    if (wcfg) {
+      setWaveletType(wcfg.wavelet || 'db4');
+      setWaveletLevels(wcfg.levels || 4);
+    } else {
+      setWaveletType('db4');
+      setWaveletLevels(4);
+    }
   };
 
   const isEcg     = currentMode === 'ecg';
   const hasResults = inputSignal && outputSignal && !loading;
 
   /* ── Mode tab list ── */
-  const modeEntries = [
-    ['generic', { label: 'Generic' }],
-    ...Object.entries(allModes),
-  ];
+  // Only include 'generic' if not present in allModes
+  const modeEntries = Object.entries({
+    ...(allModes.generic ? {} : { generic: { label: 'Generic' } }),
+    ...allModes,
+  });
 
   const statusClass = loading ? 'processing' : error ? 'error' : file ? 'ready' : '';
   const statusText  = loading ? 'Processing…'  : error ? 'Error'   : file ? 'Ready'  : 'No file loaded';
@@ -324,7 +380,7 @@ export default function App() {
           </div>
         )}
 
-        {/* Equalizer bands */}
+        {/* Equalizer bands: Wavelet and FFT panels, improved order and button placement */}
         {file && (
           <div className="section-card">
             <div className="section-head">
@@ -340,13 +396,73 @@ export default function App() {
               </div>
             </div>
             <div className="section-body">
-              <SliderPanel
-                mode={currentMode}
-                bands={bands}
-                onBandsChange={setBands}
-                weights={weights}
-                onWeightsChange={setWeights}
-              />
+              {/* 1. Wavelet controls row */}
+              <div className="wavelet-controls-row" style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 12 }}>
+                <label style={{ fontWeight: 500 }}>
+                  Wavelet:
+                  <select
+                    value={waveletConfigUsed?.wavelet || waveletType}
+                    onChange={e => setWaveletType(e.target.value)}
+                    disabled={currentMode !== 'generic'}
+                    style={{ marginLeft: 8 }}
+                  >
+                    {WAVELET_OPTIONS.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label style={{ fontWeight: 500 }}>
+                  Levels:
+                  <input
+                    type="number"
+                    min={1}
+                    max={8}
+                    value={waveletConfigUsed?.levels || waveletLevels}
+                    onChange={e => setWaveletLevels(Number(e.target.value))}
+                    disabled={currentMode !== 'generic'}
+                    style={{ width: 48, marginLeft: 8 }}
+                  />
+                </label>
+                <span style={{ color: '#888', fontSize: 13 }}>
+                  {currentMode !== 'generic'
+                    ? 'Preset for this mode'
+                    : 'Choose wavelet and levels'}
+                </span>
+              </div>
+
+              {/* 2. Collapsible Wavelet Bands */}
+              <div className="collapsible-panel">
+                <button type="button" onClick={() => setWaveletBandsOpen(p => !p)} style={{ fontWeight: 600, marginBottom: 4 }}>
+                  Wavelet Bands ({waveletConfigUsed?.wavelet || waveletType}) {waveletBandsOpen ? '▲' : '▼'}
+                </button>
+                {waveletBandsOpen && (
+                  <SliderPanel
+                    mode="wavelet"
+                    bands={waveletLevelBands}
+                    onBandsChange={() => {}}
+                    weights={waveletWeights}
+                    onWeightsChange={setWaveletWeights}
+                  />
+                )}
+              </div>
+
+              {/* 3. Collapsible FFT Bands and Add/Save/Load buttons (side by side) */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginTop: 12 }}>
+                <div className="collapsible-panel" style={{ flex: 1 }}>
+                  <button type="button" onClick={() => setFftBandsOpen(p => !p)} style={{ fontWeight: 600, marginBottom: 4 }}>
+                    FFT Bands {fftBandsOpen ? '▲' : '▼'}
+                  </button>
+                  {fftBandsOpen && (
+                    <SliderPanel
+                      mode={currentMode}
+                      bands={bands}
+                      onBandsChange={setBands}
+                      weights={weights}
+                      onWeightsChange={setWeights}
+                    />
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -375,10 +491,13 @@ export default function App() {
                 </div>
               </div>
               <div className="section-body">
-                <LinkedViewers
+                <TripleViewers
                   inputSignal={inputSignal}
-                  outputSignal={outputSignal}
+                  fftOutput={outputSignal}
+                  waveletOutput={outputWavelet}
                   sampleRate={sampleRate}
+                  viewState={viewState}
+                  setViewState={setViewState}
                 />
                 {isEcg && ecgAnalysis.bpm !== null && (
                   <div className="ecg-diagnosis-panel">
@@ -422,7 +541,7 @@ export default function App() {
                     bands={bands}
                     minFreq={visFreq.min}
                     maxFreq={visFreq.max}
-                    label=""
+                    label="FFT Equalization"
                   />
                 )}
               </div>
@@ -449,7 +568,7 @@ export default function App() {
               </div>
               {showSpectrograms && (
                 <div className="section-body">
-                  <div className="spectrogram-grid">
+                  <div className="spectrogram-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
                     {inputSpectrogram && (
                       <Spectrogram
                         freqs={inputSpectrogram.freqs}
@@ -467,7 +586,7 @@ export default function App() {
                         data={outputSpectrogram.values}
                         minFreq={visFreq.min}
                         maxFreq={visFreq.max}
-                        label="Output"
+                        label="FFT Output"
                       />
                     )}
                   </div>

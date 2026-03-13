@@ -7,8 +7,8 @@ import librosa
 import numpy as np
 from flask import Flask, jsonify, request
 
-from app.services.equalizer_service import apply_equalizer
-from app.services.transform_service import compute_spectrogram, compute_fft_magnitude
+from app.services.equalizer_service import apply_equalizer, apply_wavelet_equalizer
+from app.services.transform_service import compute_spectrogram, compute_fft_magnitude, compute_wavelet_level_ranges
 
 
 def load_modes_config() -> Dict[str, Any]:
@@ -93,16 +93,17 @@ def register_routes(app: Flask) -> None:
 
         file = request.files["file"]
         filename = file.filename or ""
-        if not filename.lower().endswith(".wav"):
-            return jsonify({"error": "Only .wav files are supported"}), 400
+        if not filename.lower().endswith(('.wav', '.mp3')):
+            return jsonify({"error": "Only .wav and .mp3 files are supported"}), 400
 
         file_bytes = io.BytesIO(file.read())
 
         # Load audio with librosa (downsampled for speed)
-        y, sr = librosa.load(file_bytes, sr=11025, mono=True)
+        mode = request.form.get("mode", "generic")
+        target_sr = 500 if mode == 'ecg' else 11025
+        y, sr = librosa.load(file_bytes, sr=target_sr, mono=True)
 
         # Get mode and weights
-        mode = request.form.get("mode", "generic")
         weights_raw = request.form.get("weights")
         weights: Dict[str, float]
         
@@ -135,7 +136,7 @@ def register_routes(app: Flask) -> None:
             if mode_cfg:
                 bands = mode_cfg.get("bands", [])
 
-        # Apply equalization
+        # Apply FFT equalization
         y_eq = apply_equalizer(
             signal=y,
             sample_rate=float(sr),
@@ -143,16 +144,56 @@ def register_routes(app: Flask) -> None:
             weights=weights,
         )
 
-        # Compute spectrograms using np.fft
+        # --- Wavelet pipeline ---
+        # Parse wavelet_weights
+        wavelet_weights_raw = request.form.get("wavelet_weights")
+        if wavelet_weights_raw:
+            try:
+                wavelet_weights = json.loads(wavelet_weights_raw)
+            except json.JSONDecodeError:
+                return jsonify({"error": "Invalid JSON in 'wavelet_weights' field"}), 400
+            if not isinstance(wavelet_weights, dict):
+                return jsonify({"error": "'wavelet_weights' must be a JSON object"}), 400
+        else:
+            wavelet_weights = {}
+
+        # Determine wavelet config
+        if mode == "generic":
+            wavelet = request.form.get("wavelet", "db4")
+            try:
+                wavelet_levels = int(request.form.get("wavelet_levels", 4))
+            except Exception:
+                wavelet_levels = 4
+            wavelet_config_used = {"wavelet": wavelet, "levels": wavelet_levels}
+        else:
+            mode_cfg = modes_config.get(mode, {})
+            wavelet_cfg = mode_cfg.get("wavelet_config", {"wavelet": "db4", "levels": 4})
+            wavelet = wavelet_cfg.get("wavelet", "db4")
+            wavelet_levels = int(wavelet_cfg.get("levels", 4))
+            wavelet_config_used = {"wavelet": wavelet, "levels": wavelet_levels}
+
+        # Apply wavelet equalization
+        y_wavelet = apply_wavelet_equalizer(
+            signal=y,
+            sample_rate=float(sr),
+            wavelet=wavelet,
+            levels=wavelet_levels,
+            wavelet_weights=wavelet_weights,
+        )
+
+        # Compute spectrograms
         try:
             in_f, in_t, in_S = compute_spectrogram(y, float(sr))
             out_f, out_t, out_S = compute_spectrogram(y_eq, float(sr))
         except ValueError as e:
             return jsonify({"error": f"Spectrogram computation failed: {str(e)}"}), 400
 
-        # Compute FFT magnitudes using np.fft
+        # Compute FFT magnitudes
         freq_axis, input_mag = compute_fft_magnitude(y, float(sr))
         _, output_mag = compute_fft_magnitude(y_eq, float(sr))
+
+        # Compute wavelet level bands
+        wavelet_level_bands = compute_wavelet_level_ranges(float(sr), wavelet, wavelet_levels)
 
         # Downsample audio for JSON payload
         max_audio_samples = 100_000
@@ -168,6 +209,7 @@ def register_routes(app: Flask) -> None:
             "num_samples": int(len(y)),
             "input_audio": y[::audio_step].tolist(),
             "output_audio": y_eq[::audio_step].tolist(),
+            "output_wavelet_audio": y_wavelet[::audio_step].tolist(),
             "spectrogram_input": {
                 "freqs": in_f,
                 "times": in_t,
@@ -181,6 +223,8 @@ def register_routes(app: Flask) -> None:
             "fft_freqs": freq_axis,
             "input_fft": input_mag,
             "output_fft": output_mag,
+            "wavelet_level_bands": wavelet_level_bands,
+            "wavelet_config_used": wavelet_config_used,
         }
 
         return jsonify(response)
