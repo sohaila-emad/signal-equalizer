@@ -99,3 +99,33 @@ def compute_fft_magnitude(
     freqs = np.fft.rfftfreq(fft_size, d=1.0 / sample_rate)
 
     return freqs.tolist(), magnitude.tolist()
+
+
+# --- Wavelet Level Frequency Ranges Helper ---
+def compute_wavelet_level_ranges(sample_rate: float, wavelet: str, levels: int) -> List[Dict[str, Any]]:
+    """
+    Returns a list of dicts for each DWT level with id, label, min_hz, max_hz.
+    min_hz = sample_rate / 2**(level+1)
+    max_hz = sample_rate / 2**level
+    Level 1 = highest frequency detail coefficients.
+    """
+    bands = []
+    for level in range(1, levels + 1):
+        min_hz = sample_rate / (2 ** (level + 1))
+        max_hz = sample_rate / (2 ** level)
+        bands.append({
+            "id": f"level_{level}",
+            "label": f"Level {level}",
+            "min_hz": min_hz,
+            "max_hz": max_hz
+        })
+    # Approximation band (lowest frequencies)
+    min_hz = 0.0
+    max_hz = sample_rate / (2 ** (levels + 1))
+    bands.append({
+        "id": "approx",
+        "label": "Approx",
+        "min_hz": min_hz,
+        "max_hz": max_hz
+    })
+    return bands

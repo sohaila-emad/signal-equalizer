@@ -16,15 +16,42 @@ const API_BASE = 'http://127.0.0.1:5000';
  * @param {Array} bands - Band configurations (only sent for generic mode)
  * @returns {Promise<Object>} - Processed audio data from backend
  */
-export async function uploadAndTransform(file, mode, weights, bands = null) {
+
+/**
+ * Upload and transform a WAV file with equalizer and wavelet settings.
+ * @param {File} file - The WAV file to process
+ * @param {string} mode - The mode (e.g., "generic", "musical", etc.)
+ * @param {Object} weights - Band ID to gain mapping (e.g., { "bass": 1.2 })
+ * @param {Array} bands - Band configurations (only sent for generic mode)
+ * @param {Object} waveletWeights - Wavelet level ID to gain mapping (e.g., { "level_1": 0.5 })
+ * @param {string} wavelet - Wavelet name (for generic mode override)
+ * @param {number} waveletLevels - Number of DWT levels (for generic mode override)
+ * @returns {Promise<Object>} - Processed audio data from backend
+ */
+export async function uploadAndTransform(
+  file,
+  mode,
+  weights,
+  bands = null,
+  waveletWeights = {},
+  wavelet = null,
+  waveletLevels = null
+) {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('mode', mode);
   formData.append('weights', JSON.stringify(weights));
-  
-  // Only send bands for generic mode
-  if (mode === 'generic' && bands) {
+  if (bands && bands.length > 0) {
     formData.append('bands', JSON.stringify(bands));
+  }
+  // Add wavelet weights
+  formData.append('wavelet_weights', JSON.stringify(waveletWeights || {}));
+  // For generic mode, allow override of wavelet and levels
+  if (mode === 'generic' && wavelet) {
+    formData.append('wavelet', wavelet);
+  }
+  if (mode === 'generic' && waveletLevels) {
+    formData.append('wavelet_levels', waveletLevels);
   }
 
   const response = await fetch(`${API_BASE}/transform`, {

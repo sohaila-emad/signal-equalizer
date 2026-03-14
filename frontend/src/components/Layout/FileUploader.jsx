@@ -23,7 +23,7 @@ export default function FileUploader({ onFileSelect, file }) {
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
       >
-        <input type="file" accept=".wav,audio/wav" onChange={handleChange} />
+        <input type="file" accept=".wav,.mp3,audio/wav,audio/mpeg" onChange={handleChange} />
         <div className="upload-icon">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
