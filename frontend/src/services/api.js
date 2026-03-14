@@ -35,7 +35,9 @@ export async function uploadAndTransform(
   bands = null,
   waveletWeights = {},
   wavelet = null,
-  waveletLevels = null
+  waveletLevels = null,
+  useAi = false,
+  abortSignal = null
 ) {
   const formData = new FormData();
   formData.append('file', file);
@@ -44,6 +46,8 @@ export async function uploadAndTransform(
   if (bands && bands.length > 0) {
     formData.append('bands', JSON.stringify(bands));
   }
+  // Add a simple flag for enabling the AI model on the backend
+  formData.append('use_ai', useAi ? '1' : '0');
   // Add wavelet weights
   formData.append('wavelet_weights', JSON.stringify(waveletWeights || {}));
   // For generic mode, allow override of wavelet and levels
@@ -57,6 +61,7 @@ export async function uploadAndTransform(
   const response = await fetch(`${API_BASE}/transform`, {
     method: 'POST',
     body: formData,
+    signal: abortSignal,
   });
 
   if (!response.ok) {

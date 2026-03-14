@@ -33,44 +33,65 @@ export default function CineViewer({ signal, sampleRate, label, viewState, onVie
     if (!canvas || !signal || signal.length === 0) return;
 
     const ctx = canvas.getContext('2d');
-    // Higher resolution canvas for better quality
-    const width = 1200;
-    const height = 240;
-    canvas.width = width;
-    canvas.height = height;
 
-    ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = '#020617';
-    ctx.fillRect(0, 0, width, height);
+    const draw = () => {
+      const parentWidth = canvas.parentElement?.clientWidth || 1200;
+      const height = 240;
+      const dpr = window.devicePixelRatio || 1;
+      const width = Math.floor(parentWidth);
 
-    // Clamp offset to valid range
-    const start = Math.max(0, Math.min(offsetSamples, Math.max(0, signal.length - 1)));
-    const end = Math.min(signal.length, start + windowSize);
-    const view = signal.slice(start, end);
+      // Resize canvas to match parent width (responsive) while using device pixel ratio for sharpness.
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    const midY = height / 2;
-    const step = Math.max(1, Math.floor(view.length / width));
-    const amp = midY * 0.9;
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = '#020617';
+      ctx.fillRect(0, 0, width, height);
 
-    ctx.strokeStyle = '#22c55e';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    for (let x = 0; x < width; x++) {
-      const i = x * step;
-      const v = view[i] ?? 0;
-      const y = midY - v * amp;
-      if (x === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
+      // Clamp offset to valid range
+      const start = Math.max(0, Math.min(offsetSamples, Math.max(0, signal.length - 1)));
+      const end = Math.min(signal.length, start + windowSize);
+      const view = signal.slice(start, end);
 
-    // Draw playhead
-    ctx.strokeStyle = '#ef4444';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(width / 2, 0);
-    ctx.lineTo(width / 2, height);
-    ctx.stroke();
+      const viewLen = view.length;
+      if (viewLen > 0) {
+        const midY = height / 2;
+        const amp = midY * 0.9;
+        const xScale = width / Math.max(1, viewLen - 1);
+
+        ctx.strokeStyle = '#22c55e';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let i = 0; i < viewLen; i++) {
+          const x = i * xScale;
+          const v = view[i] ?? 0;
+          const y = midY - v * amp;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+
+      // Draw playhead
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(width / 2, 0);
+      ctx.lineTo(width / 2, height);
+      ctx.stroke();
+    };
+
+    draw();
+
+    const handleResize = () => {
+      draw();
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, [signal, offsetSamples, windowSize]);
 
   const stopPlayback = () => {
@@ -158,21 +179,24 @@ export default function CineViewer({ signal, sampleRate, label, viewState, onVie
       } else {
         setIsPlaying(false);
         sourceRef.current = null;
-        onViewChange({ offsetSamples: 0, zoom });
+        // Keep the view at the end of the signal instead of resetting to start.
+        onViewChange({ offsetSamples: Math.max(0, signal.length - 1), zoom });
       }
     };
     rafRef.current = requestAnimationFrame(updateProgress);
   };
 
   const handleZoomIn = () => {
-    const newZoom = Math.min(zoom * 2, 100);
-    onViewChange({ offsetSamples, zoom: newZoom });
+    const minZoom = Math.min(1, baseWindowSize / Math.max(1, signal?.length || 1));
+    const maxZoom = 100;
+    const newZoom = Math.min(maxZoom, zoom * 2);
+    onViewChange({ offsetSamples, zoom: Math.max(minZoom, newZoom) });
   };
 
   const handleZoomOut = () => {
-    const maxZoomOut = signal ? signal.length / baseWindowSize : 1;
-    const newZoom = Math.max(zoom / 2, 1 / maxZoomOut);
-    onViewChange({ offsetSamples, zoom: newZoom });
+    const minZoom = Math.min(1, baseWindowSize / Math.max(1, signal?.length || 1));
+    const newZoom = zoom / 2;
+    onViewChange({ offsetSamples, zoom: Math.max(minZoom, newZoom) });
   };
 
   const handlePanLeft = () => {

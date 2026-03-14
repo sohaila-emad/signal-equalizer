@@ -9,6 +9,8 @@ export default function TripleViewers({
   inputSignal,
   fftOutput,
   waveletOutput,
+  aiOutput,
+  showAi,
   sampleRate,
   viewState,    // <--- Use the prop from App.js
   setViewState  // <--- Use the prop from App.js
@@ -46,6 +48,17 @@ export default function TripleViewers({
           viewState={viewState}
           onViewChange={handleSharedViewChange}
           label="Wavelet Output"
+        />
+      )}
+
+      {/* Only render AI viewer if the signal exists and user enabled it */}
+      {showAi && aiOutput && (
+        <CineViewer
+          signal={aiOutput}
+          sampleRate={sampleRate}
+          viewState={viewState}
+          onViewChange={handleSharedViewChange}
+          label="Musical AI (HTDemucs)"
         />
       )}
     </div>

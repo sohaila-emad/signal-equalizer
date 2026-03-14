@@ -124,6 +124,7 @@ export default function App() {
   const [waveletLevelBands,  setWaveletLevelBands]  = useState([]);
   const [waveletConfigUsed,  setWaveletConfigUsed]  = useState(null);
   const [outputWavelet,      setOutputWavelet]      = useState(null);
+  const [outputAI,           setOutputAI]           = useState(null);
   const [waveletType,        setWaveletType]        = useState('db4');
   const [waveletLevels,      setWaveletLevels]      = useState(4);
   const [fftBandsOpen,       setFftBandsOpen]       = useState(true);
@@ -140,6 +141,7 @@ export default function App() {
   const [error,              setError]              = useState(null);
   const [showSpectrograms,   setShowSpectrograms]   = useState(true);
   const [isAudiogram,        setIsAudiogram]        = useState(false);
+  const [useAiModel,         setUseAiModel]         = useState(false);
   const [ecgAnalysis,        setEcgAnalysis]        = useState({ bpm: null, type: null });
 
   const [freqRange, setFreqRange] = useState({ min: 0, max: 5000 });
@@ -150,6 +152,7 @@ export default function App() {
 
   const prevFftIdRef  = useRef(null);
   const debounceTimer = useRef(null);
+  const requestAbortController = useRef(null);
 
   /* ── Load modes ── */
   useEffect(() => {
@@ -212,8 +215,9 @@ export default function App() {
       outputMag: result.output_fft,
     });
 
-    // --- Wavelet pipeline fields ---
+    // --- Multi-output fields ---
     setOutputWavelet(result.output_wavelet_audio ? new Float32Array(result.output_wavelet_audio) : null);
+    setOutputAI(result.output_ai ? new Float32Array(result.output_ai) : null);
     setWaveletLevelBands(result.wavelet_level_bands || []);
     setWaveletConfigUsed(result.wavelet_config_used || null);
 
@@ -222,8 +226,14 @@ export default function App() {
 
   const processSignalWithBands = async (bandsArg) => {
     try {
+      // Cancel any in-flight request; new interaction should override it
+      requestAbortController.current?.abort();
+      requestAbortController.current = new AbortController();
+
       setLoading(true); setError(null);
-      const fw = { ...weights };
+      setOutputAI(null);
+      const fw = Object.keys(weights).length > 0 ? weights : 
+           bands.reduce((acc, b) => ({ ...acc, [b.id]: b.scale || 1.0 }), {});
       if (currentMode === 'generic') bandsArg.forEach((b) => { if (b.id) fw[b.id] = b.scale ?? 1; });
       const result = await uploadAndTransform(
         file,
@@ -232,11 +242,16 @@ export default function App() {
         bandsArg,
         waveletWeights,
         waveletType,
-        waveletLevels
+        waveletLevels,
+        useAiModel,
+        requestAbortController.current.signal
       );
       applyResult(result);
     } catch (err) {
-      setError(err.message); setLoading(false);
+      if (err.name !== 'AbortError') {
+        setError(err.message);
+      }
+      setLoading(false);
     }
   };
 
@@ -245,7 +260,12 @@ export default function App() {
     if (!file) return;
     const run = async () => {
       try {
+        // Cancel any in-flight request before starting a new one.
+        requestAbortController.current?.abort();
+        requestAbortController.current = new AbortController();
+
         setLoading(true); setError(null);
+        setOutputAI(null);
         const fw = { ...weights };
         if (currentMode === 'generic') bands.forEach((b) => { if (b.id) fw[b.id] = b.scale ?? 1; });
         const result = await uploadAndTransform(
@@ -255,24 +275,44 @@ export default function App() {
           bands,
           waveletWeights,
           waveletType,
-          waveletLevels
+          waveletLevels,
+          useAiModel,
+          requestAbortController.current.signal
         );
         applyResult(result);
-      } catch (err) { setError(err.message); setLoading(false); }
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          setError(err.message);
+        }
+        setLoading(false);
+      }
     };
     clearTimeout(debounceTimer.current);
-    debounceTimer.current = setTimeout(run, 350);
+    debounceTimer.current = setTimeout(run, useAiModel ? 1500 : 350);
     return () => clearTimeout(debounceTimer.current);
-  }, [file, currentMode, bands, weights, waveletWeights, waveletType, waveletLevels]);
+  }, [file, currentMode, bands, weights, waveletWeights, waveletType, waveletLevels, useAiModel]);
 
   const handleModeChange = (newMode) => {
     setCurrentMode(newMode);
     setWeights({});
     setEcgAnalysis({ bpm: null, type: null });
     setWaveletWeights({});
+    setOutputAI(null);
+    setUseAiModel(false);
+
     if (newMode === 'ecg') setIsAudiogram(false);
-    if (newMode !== 'generic') setBands(allModes[newMode]?.bands ?? []);
-    else setBands([]);
+
+    if (newMode !== 'generic') {
+      setBands(allModes[newMode]?.bands ?? []);
+    } else {
+      setBands([]);
+    }
+
+    if (newMode === 'musical') {
+      setVisFreq({ min: 20, max: 20000 }); // Zoom out to see the full musical spectrum
+      setFreqRange({ min: 0, max: 22050 });
+    }
+
     // Set wavelet type/levels from mode config
     const wcfg = allModes[newMode]?.wavelet_config;
     if (wcfg) {
@@ -501,12 +541,23 @@ export default function App() {
                   </span>
                   <span className="section-title">Waveform Comparison</span>
                 </div>
+                {currentMode === 'musical' && (
+                  <button
+                    type="button"
+                    className={`toggle-pill ${useAiModel ? 'on' : ''}`}
+                    onClick={() => setUseAiModel((p) => !p)}
+                  >
+                    AI {useAiModel ? '✓' : ''}
+                  </button>
+                )}
               </div>
               <div className="section-body">
                 <TripleViewers
                   inputSignal={inputSignal}
                   fftOutput={outputSignal}
                   waveletOutput={outputWavelet}
+                  aiOutput={outputAI}
+                  showAi={useAiModel}
                   sampleRate={sampleRate}
                   viewState={viewState}
                   setViewState={setViewState}

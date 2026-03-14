@@ -1,5 +1,6 @@
 import io
 import json
+import traceback
 from pathlib import Path
 from typing import Dict, Any
 
@@ -61,78 +62,101 @@ def register_routes(app: Flask) -> None:
 
     @app.post("/transform")
     def transform():
-        if "file" not in request.files:
-            return jsonify({"error": "No file uploaded"}), 400
+        try:
+            if "file" not in request.files:
+                return jsonify({"error": "No file uploaded"}), 400
 
-        file = request.files["file"]
-        file_bytes = io.BytesIO(file.read())
+            file = request.files["file"]
+            file_bytes = io.BytesIO(file.read())
 
-        # 1. Loading & Mode Setup
-        mode = request.form.get("mode", "generic")
-        target_sr = 500 if mode in ['ecg', 'ecg_abnormalities'] else 11025
-        y, sr = librosa.load(file_bytes, sr=target_sr, mono=True)
+            # 1. Loading & Mode Setup
+            mode = request.form.get("mode", "generic")
+            target_sr = 500 if mode in ['ecg', 'ecg_abnormalities'] else 11025
+            y, sr = librosa.load(file_bytes, sr=target_sr, mono=True)
 
-        weights_raw = request.form.get("weights")
-        weights = json.loads(weights_raw) if weights_raw else {}
+            weights_raw = request.form.get("weights")
+            weights = json.loads(weights_raw) if weights_raw else {}
 
-        # 2. Handle Bands & Main Signal Processing
-        bands = []
-        if mode == "generic":
-            bands_raw = request.form.get("bands")
-            if bands_raw:
-                bands = json.loads(bands_raw)
-        else:
-            mode_cfg = modes_config.get(mode, {})
-            bands = mode_cfg.get("bands", [])
+            # Optional flag for enabling the AI backend output
+            use_ai_raw = request.form.get("use_ai", "0")
+            use_ai = str(use_ai_raw).lower() in ("1", "true", "t", "yes")
 
-        # Choose between Abnormality Processing or Standard Equalizer
-        if mode == "ecg_abnormalities":
-            y_eq = process_abnormality_mode(y, sr, weights)
-        else:
-            y_eq = apply_equalizer(y, float(sr), bands, weights)
+            # 2. Handle Bands & Main Signal Processing
+            bands = []
+            if mode == "generic":
+                bands_raw = request.form.get("bands")
+                if bands_raw:
+                    bands = json.loads(bands_raw)
+            else:
+                mode_cfg = modes_config.get(mode, {})
+                bands = mode_cfg.get("bands", [])
 
-        # 3. Wavelet Pipeline (Keeping all your wavelet logic)
-        wavelet_weights_raw = request.form.get("wavelet_weights")
-        wavelet_weights = json.loads(wavelet_weights_raw) if wavelet_weights_raw else {}
+            # Choose between Abnormality Processing or Standard Equalizer
+            # Optionally compute an 'AI' output if requested by the frontend.
+            y_ai = None
 
-        if mode == "generic":
-            wavelet = request.form.get("wavelet", "db4")
-            wavelet_levels = int(request.form.get("wavelet_levels", 4))
-        else:
-            mode_cfg = modes_config.get(mode, {})
-            w_cfg = mode_cfg.get("wavelet_config", {"wavelet": "db4", "levels": 4})
-            wavelet = w_cfg.get("wavelet", "db4")
-            wavelet_levels = int(w_cfg.get("levels", 4))
+            if mode == "ecg_abnormalities":
+                y_eq = process_abnormality_mode(y, sr, weights)
 
-        y_wavelet = apply_wavelet_equalizer(y, float(sr), wavelet, wavelet_levels, wavelet_weights)
+            else:
+                # Always compute the standard equalizer result (FFT-based)
+                y_eq = apply_equalizer(y, float(sr), bands, weights)
 
-        # 4. Math Transforms
-        in_f, in_t, in_S = compute_spectrogram(y, float(sr))
-        out_f, out_t, out_S = compute_spectrogram(y_eq, float(sr))
-        freq_axis, input_mag = compute_fft_magnitude(y, float(sr))
-        _, output_mag = compute_fft_magnitude(y_eq, float(sr))
-        wavelet_level_bands = compute_wavelet_level_ranges(float(sr), wavelet, wavelet_levels)
+                # For musical mode, optionally compute the AI output when enabled by the client
+                if mode == "musical" and use_ai:
+                    try:
+                        from app.services.music_model import process_from_array
+                        y_ai = process_from_array(y.astype(np.float32), int(sr), weights)
+                    except Exception as e:
+                        print(f"[musical AI] failed: {e} — using equalizer output")
+                        y_ai = None
 
-        # 5. Build Response
-        max_audio_samples = 100_000
-        step = max(1, len(y) // max_audio_samples)
+            # 3. Wavelet Pipeline (Keeping all your wavelet logic)
+            wavelet_weights_raw = request.form.get("wavelet_weights")
+            wavelet_weights = json.loads(wavelet_weights_raw) if wavelet_weights_raw else {}
 
-        return jsonify({
-            "filename": file.filename,
-            "sample_rate": int(sr),
-            "audio_step": int(step),
-            "preview_sample_rate": float(sr) / float(step),
-            "mode": mode,
-            "weights": weights,
-            "num_samples": int(len(y)),
-            "input_audio": y[::step].tolist(),
-            "output_audio": y_eq[::step].tolist(),
-            "output_wavelet_audio": y_wavelet[::step].tolist(),
-            "spectrogram_input": {"freqs": in_f, "times": in_t, "values": in_S},
-            "spectrogram_output": {"freqs": out_f, "times": out_t, "values": out_S},
-            "fft_freqs": freq_axis,
-            "input_fft": input_mag,
-            "output_fft": output_mag,
-            "wavelet_level_bands": wavelet_level_bands,
-            "wavelet_config_used": {"wavelet": wavelet, "levels": wavelet_levels},
-        })
+            if mode == "generic":
+                wavelet = request.form.get("wavelet", "db4")
+                wavelet_levels = int(request.form.get("wavelet_levels", 4))
+            else:
+                mode_cfg = modes_config.get(mode, {})
+                w_cfg = mode_cfg.get("wavelet_config", {"wavelet": "db4", "levels": 4})
+                wavelet = w_cfg.get("wavelet", "db4")
+                wavelet_levels = int(w_cfg.get("levels", 4))
+
+            y_wavelet = apply_wavelet_equalizer(y, float(sr), wavelet, wavelet_levels, wavelet_weights)
+
+            # 4. Math Transforms
+            in_f, in_t, in_S = compute_spectrogram(y, float(sr))
+            out_f, out_t, out_S = compute_spectrogram(y_eq, float(sr))
+            freq_axis, input_mag = compute_fft_magnitude(y, float(sr))
+            _, output_mag = compute_fft_magnitude(y_eq, float(sr))
+            wavelet_level_bands = compute_wavelet_level_ranges(float(sr), wavelet, wavelet_levels)
+
+            # 5. Build Response
+            max_audio_samples = 100_000
+            step = max(1, len(y) // max_audio_samples)
+
+            return jsonify({
+                "filename": file.filename,
+                "sample_rate": int(sr),
+                "audio_step": int(step),
+                "preview_sample_rate": float(sr) / float(step),
+                "mode": mode,
+                "weights": weights,
+                "num_samples": int(len(y)),
+                "input_audio": y[::step].tolist(),
+                "output_audio": y_eq[::step].tolist(),
+                "output_wavelet_audio": y_wavelet[::step].tolist(),
+                "output_ai": y_ai[::step].tolist() if y_ai is not None else None,
+                "spectrogram_input": {"freqs": in_f, "times": in_t, "values": in_S},
+                "spectrogram_output": {"freqs": out_f, "times": out_t, "values": out_S},
+                "fft_freqs": freq_axis,
+                "input_fft": input_mag,
+                "output_fft": output_mag,
+                "wavelet_level_bands": wavelet_level_bands,
+                "wavelet_config_used": {"wavelet": wavelet, "levels": wavelet_levels},
+            })
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": "Internal server error", "detail": str(e)}), 500
