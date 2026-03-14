@@ -35,16 +35,37 @@
         ]
       },
       { "id": "formants", "label": "Formants", "min_hz": 300, "max_hz": 3400 },
-      { "id": "sibilance", "label": "Sibilance", "min_hz": 3400, "max_hz": 8000 }
-    ]
-  },
-  "ecg": {
+    { "id": "sibilance", "label": "Sibilance", "min_hz": 3400, "max_hz": 8000 }
+  ]
+},
+"ecg_abnormalities": {
+    "label": "Clinical ECG Simulator",
+    "description": "Morphology-based pathology simulation (LVH, BBB, and ST-Depression).",
     "bands": [
-      { "id": "baseline", "label": "Baseline Wander (Breathing)", "min_hz": 0.1, "max_hz": 0.8 },
-      { "id": "p_t_waves", "label": "P & T Waves (Slow)", "min_hz": 0.8, "max_hz": 10 },
-      { "id": "qrs_complex", "label": "QRS Complex (R-Peaks)", "min_hz": 10, "max_hz": 40 },
-      { "id": "power_line", "label": "60Hz Noise (Hum)", "min_hz": 58, "max_hz": 62 },
-      { "id": "muscle_noise", "label": "High Freq Noise", "min_hz": 62, "max_hz": 150 }
+      {
+        "id": "lvh",
+        "label": "LVH (Voltage Height)",
+        "min": 0,
+        "max": 2,
+        "step": 0.1,
+        "default": 0
+      },
+      {
+        "id": "bbb",
+        "label": "BBB (QRS Width)",
+        "min": 0,
+        "max": 2,
+        "step": 0.1,
+        "default": 0
+      },
+      {
+        "id": "st_dep",
+        "label": "ST-Depression (Ischemia)",
+        "min": 0,
+        "max": 2,
+        "step": 0.1,
+        "default": 0
+      }
     ]
-}
+  }
 }

@@ -54,11 +54,14 @@ function FftGraph({ freqs, inputMag, outputMag, isAudiogram, bands = [], label, 
 
     const toX = (freq) => {
       if (isAudiogram) {
-        const safeMin = Math.max(viewMin, 1);
-        const safeMax = Math.max(viewMax, 2);
-        return PAD.left + (Math.log2(Math.max(freq, safeMin) / safeMin) / Math.log2(safeMax / safeMin)) * plotW;
+        const logMin = Math.log10(Math.max(1, minFreq));
+        const logMax = Math.log10(Math.max(1, maxFreq));
+        const logCurr = Math.log10(Math.max(1, freq));
+        return PAD.left + ((logCurr - logMin) / (logMax - logMin)) * plotW;
+        } else {
+          // Linear scale (Standard)
+        return PAD.left + ((freq - minFreq) / (maxFreq - minFreq)) * plotW;
       }
-      return PAD.left + ((freq - viewMin) / (viewMax - viewMin)) * plotW;
     };
 
     const toY = (mag) => {
