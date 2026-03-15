@@ -1,17 +1,21 @@
 import io
+import importlib
+import importlib.util
 import json
+import sys
 import traceback
 from pathlib import Path
 from typing import Dict, Any
 
 import librosa
 import numpy as np
+import requests as _requests
 from flask import Flask, jsonify, request
 
-# Merged Imports
 from app.services.equalizer_service import apply_equalizer, apply_wavelet_equalizer
 from app.services.transform_service import compute_spectrogram, compute_fft_magnitude, compute_wavelet_level_ranges
 from app.services.abnormality_service import process_abnormality_mode
+
 
 def load_modes_config() -> Dict[str, Any]:
     config_path = Path(__file__).resolve().parent.parent.parent / "config" / "modes.json"
@@ -32,6 +36,54 @@ def save_generic_config(bands: list) -> None:
     config_path.parent.mkdir(parents=True, exist_ok=True)
     with config_path.open("w", encoding="utf-8") as f:
         json.dump({"bands": bands}, f, indent=2)
+
+
+# ── DPRNN model cache (loaded once per process) ───────────────────────────────
+_DPRNN_MODEL   = None
+_DPRNN_SR      = 8000
+_MODEL_PY_URL  = (
+    "https://raw.githubusercontent.com/asteroid-team/asteroid/"
+    "master/egs/wsj0-mix-var/Multi-Decoder-DPRNN/model.py"
+)
+_MODEL_PY_PATH = Path(__file__).resolve().parent.parent.parent / "multidecoder_model.py"
+
+
+def _get_dprnn_model():
+    """Lazy-load MultiDecoderDPRNN; result cached for the lifetime of the process."""
+    global _DPRNN_MODEL
+    if _DPRNN_MODEL is not None:
+        return _DPRNN_MODEL
+
+    import torch
+
+    # Patch torch.load for PyTorch >= 2.6
+    _orig = torch.load
+    def _patched(f, *a, **kw):
+        kw.setdefault("weights_only", False)
+        return _orig(f, *a, **kw)
+    torch.load = _patched
+
+    # Download model class from GitHub if not already cached locally
+    if not _MODEL_PY_PATH.exists():
+        print("[DPRNN] Downloading model class from GitHub…")
+        r = _requests.get(_MODEL_PY_URL, timeout=30)
+        r.raise_for_status()
+        _MODEL_PY_PATH.write_text(r.text, encoding="utf-8")
+        print(f"[DPRNN] Saved to: {_MODEL_PY_PATH}")
+
+    spec = importlib.util.spec_from_file_location("multidecoder_model", str(_MODEL_PY_PATH))
+    mod  = importlib.util.module_from_spec(spec)
+    sys.modules["multidecoder_model"] = mod
+    spec.loader.exec_module(mod)
+
+    print("[DPRNN] Loading pretrained weights from HuggingFace…")
+    _DPRNN_MODEL = mod.MultiDecoderDPRNN.from_pretrained("JunzheJosephZhu/MultiDecoderDPRNN")
+    _DPRNN_MODEL.eval()
+    print("[DPRNN] Model ready.")
+    return _DPRNN_MODEL
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 def register_routes(app: Flask) -> None:
     modes_config = load_modes_config()
@@ -77,7 +129,6 @@ def register_routes(app: Flask) -> None:
             weights_raw = request.form.get("weights")
             weights = json.loads(weights_raw) if weights_raw else {}
 
-            # Optional flag for enabling the AI backend output
             use_ai_raw = request.form.get("use_ai", "0")
             use_ai = str(use_ai_raw).lower() in ("1", "true", "t", "yes")
 
@@ -91,18 +142,13 @@ def register_routes(app: Flask) -> None:
                 mode_cfg = modes_config.get(mode, {})
                 bands = mode_cfg.get("bands", [])
 
-            # Choose between Abnormality Processing or Standard Equalizer
-            # Optionally compute an 'AI' output if requested by the frontend.
             y_ai = None
 
             if mode == "ecg_abnormalities":
                 y_eq = process_abnormality_mode(y, sr, weights)
-
             else:
-                # Always compute the standard equalizer result (FFT-based)
                 y_eq = apply_equalizer(y, float(sr), bands, weights)
 
-                # For musical mode, optionally compute the AI output when enabled by the client
                 if mode == "musical" and use_ai:
                     try:
                         from app.services.music_model import process_from_array
@@ -111,7 +157,7 @@ def register_routes(app: Flask) -> None:
                         print(f"[musical AI] failed: {e} — using equalizer output")
                         y_ai = None
 
-            # 3. Wavelet Pipeline (Keeping all your wavelet logic)
+            # 3. Wavelet Pipeline
             wavelet_weights_raw = request.form.get("wavelet_weights")
             wavelet_weights = json.loads(wavelet_weights_raw) if wavelet_weights_raw else {}
 
@@ -160,3 +206,85 @@ def register_routes(app: Flask) -> None:
         except Exception as e:
             traceback.print_exc()
             return jsonify({"error": "Internal server error", "detail": str(e)}), 500
+
+    @app.post("/separate")
+    def separate():
+        """
+        Separate voices from a WAV file using Multi-Decoder DPRNN.
+
+        Form fields:
+            file   – WAV audio file (required)
+            n_src  – int 2-5 (optional; omit for auto-detect)
+
+        Returns JSON:
+            {
+              "sources": [{ "id": 1, "audio": [...], "sample_rate": 8000, "peak_db": -1.2 }, ...],
+              "n_sources": <int>,
+              "sample_rate": 8000,
+              "audio_step": <int>
+            }
+        """
+        try:
+            import torch
+            from scipy.signal import resample_poly
+            from math import gcd
+
+            if "file" not in request.files:
+                return jsonify({"error": "No file uploaded"}), 400
+
+            file      = request.files["file"]
+            n_src_raw = request.form.get("n_src")
+            n_src     = int(n_src_raw) if n_src_raw else None
+
+            # Load & resample to 8 kHz (DPRNN requirement)
+            file_bytes = io.BytesIO(file.read())
+            y, sr = librosa.load(file_bytes, sr=None, mono=True)
+
+            if int(sr) != _DPRNN_SR:
+                g  = gcd(int(sr), _DPRNN_SR)
+                y  = resample_poly(y, _DPRNN_SR // g, int(sr) // g).astype(np.float32)
+                sr = _DPRNN_SR
+
+            # Run separation
+            model   = _get_dprnn_model()
+            mixture = torch.tensor(y, dtype=torch.float32).unsqueeze(0)  # (1, T)
+
+            with torch.no_grad():
+                separated = (
+                    model.separate(mixture)
+                    if n_src is None
+                    else model.separate(mixture, n_src=n_src)
+                )
+
+            if separated.dim() == 3:
+                separated = separated.squeeze(0)   # → (n_src, T)
+
+            n_separated = separated.shape[0]
+
+            # Normalise & downsample for JSON payload (~10 s preview at 8 kHz)
+            max_samples = 80_000
+            step        = max(1, separated.shape[1] // max_samples)
+
+            sources = []
+            for i in range(n_separated):
+                audio = separated[i].numpy()
+                peak  = float(np.abs(audio).max())
+                if peak > 1e-6:
+                    audio = audio / peak * 0.95
+                sources.append({
+                    "id":          i + 1,
+                    "audio":       audio[::step].tolist(),
+                    "sample_rate": float(sr) / float(step),
+                    "peak_db":     round(20 * np.log10(peak + 1e-9), 1),
+                })
+
+            return jsonify({
+                "sources":     sources,
+                "n_sources":   n_separated,
+                "sample_rate": int(sr),
+                "audio_step":  int(step),
+            })
+
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": "Separation failed", "detail": str(e)}), 500
