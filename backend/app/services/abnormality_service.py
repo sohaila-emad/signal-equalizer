@@ -1,29 +1,28 @@
 """
-abnormality_processor.py
-------------------------
-Applies clinical ECG morphology changes to a user's signal.
+abnormality_service.py
+-----------------------
+ECG morphology simulator with fully bidirectional sliders.
 
-Key fixes vs original:
-  - Beat-by-beat processing: detects R peaks, applies morphology per beat
-    so alignment is always correct regardless of BPM or RR variability
-  - LVH normalization fix: normalizes relative to original signal scale,
-    not the mixed signal, so high voltage is actually preserved
-  - Reliable path resolution using Path(__file__) not os.getcwd()
-  - BBB applied as QRS widening via convolution, not delta subtraction
-  - ST changes applied in the ST segment window after each QRS, not globally
+Slider semantics (all sliders):
+  1.0  = neutral — signal is unchanged
+  >1.0 = increase the abnormality
+  <1.0 = correct/reduce the abnormality (move toward normal)
+  0.0  = maximum correction
+
+LVH  : >1.0 = high voltage QRS,  <1.0 = low voltage QRS
+BBB  : >1.0 = wider QRS,          <1.0 = sharper/narrower QRS
+ST-D : >1.0 = ST depression,     <1.0 = ST elevation (correction)
+ST-E : >1.0 = ST elevation,      <1.0 = ST depression (correction)
 """
 
 import numpy as np
-import librosa
 import neurokit2 as nk
 from pathlib import Path
 
 
-REF_DIR = Path(__file__).resolve().parent.parent / "data" / "synthetic" / "references"
-
+# ── R-peak detection ──────────────────────────────────────────────────────────
 
 def _detect_r_peaks(signal: np.ndarray, sr: int) -> np.ndarray:
-    """Return R-peak sample indices. Falls back to estimated positions on failure."""
     try:
         _, info = nk.ecg_peaks(signal, sampling_rate=sr)
         peaks = info["ECG_R_Peaks"]
@@ -32,17 +31,14 @@ def _detect_r_peaks(signal: np.ndarray, sr: int) -> np.ndarray:
     except Exception:
         pass
 
-    # Fallback: estimate from signal autocorrelation
-    # Find dominant period between 0.3s (200 BPM) and 2.0s (30 BPM)
-    min_dist = int(sr * 0.3)
-    max_dist = int(sr * 2.0)
+    # Fallback threshold-based detection
     threshold = np.max(signal) * 0.6
-    peaks = []
-    i = 0
+    min_dist  = int(sr * 0.3)
+    peaks, i  = [], 0
     while i < len(signal):
         if signal[i] > threshold:
-            window_end = min(i + min_dist, len(signal))
-            local_max  = i + np.argmax(signal[i:window_end])
+            end       = min(i + min_dist, len(signal))
+            local_max = i + np.argmax(signal[i:end])
             peaks.append(local_max)
             i = local_max + min_dist
         else:
@@ -50,100 +46,128 @@ def _detect_r_peaks(signal: np.ndarray, sr: int) -> np.ndarray:
     return np.array(peaks) if peaks else np.array([len(signal) // 2])
 
 
+# ── LVH ───────────────────────────────────────────────────────────────────────
+
 def _apply_lvh(signal: np.ndarray, r_peaks: np.ndarray,
-               sr: int, weight: float) -> np.ndarray:
+                sr: int, weight: float) -> np.ndarray:
     """
-    LVH = increased R-peak voltage.
-    For each beat, scale up the QRS amplitude by (1 + weight * gain).
-    We scale the QRS window only, leaving P and T waves untouched.
-    weight=1.0 → R peak is ~2.5x normal (clinically significant LVH).
+    Direct QRS amplitude scaling.
+    weight=1.0 → no change
     """
-    out = signal.copy()
-    qrs_half = int(0.06 * sr)   # ±60ms around R peak = QRS window
+    out      = signal.copy()
+    qrs_half = int(0.06 * sr)
 
     for peak in r_peaks:
         lo = max(0, peak - qrs_half)
         hi = min(len(signal), peak + qrs_half)
-        # Scale factor: weight=1.0 gives 2.5x, weight=0.5 gives 1.75x
-        scale = 1.0 + weight * 1.5
-        out[lo:hi] = signal[lo:hi] * scale
+        out[lo:hi] = signal[lo:hi] * weight
 
     return out
+
+
+# ── BBB ───────────────────────────────────────────────────────────────────────
+
+def _make_widening_kernel(width_samples: int) -> np.ndarray:
+    """Hanning smoothing kernel for QRS widening."""
+    if width_samples % 2 == 0:
+        width_samples += 1
+    k = np.hanning(width_samples).astype(np.float64)
+    return k / k.sum()
 
 
 def _apply_bbb(signal: np.ndarray, r_peaks: np.ndarray,
                sr: int, weight: float) -> np.ndarray:
     """
-    BBB = widened QRS complex (>=120ms).
-    Achieved by convolving the QRS region with a smoothing kernel.
-    weight=1.0 -> QRS width ~150ms (moderate BBB).
-    weight=2.0 -> QRS width ~200ms (severe BBB).
-
-    Kernel is capped at 120ms (0.12s) regardless of weight to prevent
-    the kernel from growing larger than the QRS window itself,
-    which caused memory/timeout crashes above weight=1.5.
+    BBB: bidirectional QRS width control.
+    weight > 1.0 → widen QRS
+    weight < 1.0 → sharpen QRS (Pinching logic)
     """
-    out = signal.copy()
-    qrs_half = int(0.07 * sr)   # ±70ms QRS extraction window
+    print(f"  BBB  weight={weight:.4f}", end="")
 
-    # Cap kernel at 120ms — beyond that you get smearing not widening
-    # weight=1.0 → 40ms kernel, weight=2.0 → 80ms kernel, hard cap 120ms
-    MAX_KERNEL_MS = 0.12
-    kernel_secs  = min(weight * 0.04, MAX_KERNEL_MS)
-    kernel_width = max(3, int(kernel_secs * sr))
-    if kernel_width % 2 == 0:
-        kernel_width += 1   # must be odd for symmetric convolution
+    if abs(weight - 1.0) < 0.01:
+        print(" → no change (within tolerance)")
+        return signal
 
-    kernel = np.hanning(kernel_width)
-    kernel /= kernel.sum()
+    print(f" → {'widening' if weight > 1.0 else 'sharpening'}")
 
-    for peak in r_peaks:
-        try:
-            lo = max(0, peak - qrs_half)
-            hi = min(len(signal), peak + qrs_half)
-            segment = signal[lo:hi]
+    out      = signal.copy()
+    qrs_half = int(0.07 * sr)
 
-            if len(segment) < kernel_width:
-                # QRS window too small to convolve — skip this beat
+    if weight > 1.0:
+        # ── Widening ─────────────────────────────────────────────────────
+        effective  = weight - 1.0
+        MAX_K_SEC  = 0.12
+        k_secs     = min((effective ** 0.5) * MAX_K_SEC, MAX_K_SEC)
+        k_width    = max(5, int(k_secs * sr))
+        kernel     = _make_widening_kernel(k_width)
+        print(f"    kernel_width={k_width} samples ({k_secs*1000:.1f}ms)")
+
+        for peak in r_peaks:
+            try:
+                lo, hi   = max(0, peak - qrs_half), min(len(signal), peak + qrs_half)
+                segment  = signal[lo:hi]
+                if len(segment) < k_width:
+                    continue
+                widened  = np.convolve(segment, kernel, mode='same')
+                op = np.max(np.abs(segment))
+                wp = np.max(np.abs(widened))
+                if wp > 0:
+                    widened *= op / wp
+                out[lo:hi] = widened
+            except Exception:
                 continue
 
-            widened = np.convolve(segment, kernel, mode='same')
-
-            # Restore peak amplitude — convolution reduces peak height
-            orig_peak_val = np.max(np.abs(segment))
-            wide_peak_val = np.max(np.abs(widened))
-            if wide_peak_val > 0:
-                widened *= orig_peak_val / wide_peak_val
-
-            out[lo:hi] = widened
-
-        except Exception as e:
-            print(f"  WARNING: BBB failed on peak at {peak}: {e} — skipping beat")
-            continue
+    else:
+        # ── Sharpening (Power-based Pinching) ─────────────────────────────
+        strength = 1.0 - weight  # 0 at weight=1.0, 1 at weight=0.0
+        
+        for peak in r_peaks:
+            try:
+                lo, hi  = max(0, peak - qrs_half), min(len(signal), peak + qrs_half)
+                segment = signal[lo:hi].copy()
+                
+                # 1. Non-linear power transformation to pull wide shoulders down
+                seg_max = np.max(np.abs(segment))
+                if seg_max > 0:
+                    norm_seg = segment / seg_max
+                    # Power factor p squashes values between 0 and 1
+                    p = 1.0 + (strength * 1.5)
+                    sharpened = np.sign(norm_seg) * (np.abs(norm_seg) ** p)
+                    
+                    # 2. Laplacian boost for sharp definition
+                    laplace = np.array([-0.05, 1.1, -0.05]) * (1.0 + strength * 0.2)
+                    sharpened = np.convolve(sharpened, laplace, mode='same')
+                    
+                    # 3. Restore amplitude with slight visible boost
+                    out[lo:hi] = sharpened * seg_max * (1.0 + strength * 0.1)
+                    
+            except Exception as e:
+                print(f"    WARNING: sharpening failed at peak {peak}: {e}")
+                continue
 
     return out
 
 
+# ── ST changes ────────────────────────────────────────────────────────────────
+
 def _apply_st_change(signal: np.ndarray, r_peaks: np.ndarray,
-                     sr: int, weight: float, direction: float) -> np.ndarray:
+                      sr: int, weight: float,
+                      direction: float) -> np.ndarray:
     """
-    ST change = elevation (direction=+1) or depression (direction=-1).
-    Applied in the ST segment window: 80-300ms after each R peak.
-    weight=1.0 → ~0.3mV equivalent deviation.
-    direction=+1 → ST elevation (STEMI pattern)
-    direction=-1 → ST depression (ischemia/subendocardial)
+    Bidirectional ST segment shift.
     """
-    out = signal.copy()
-    # ST segment: starts ~80ms after R peak, ends ~300ms after (before T wave)
+    out      = signal.copy()
     st_start = int(0.08 * sr)
     st_end   = int(0.30 * sr)
     st_len   = st_end - st_start
 
-    # Deviation amplitude relative to signal scale
+    effective = weight - 1.0
     signal_scale = np.std(signal) * 2
-    deviation    = direction * weight * signal_scale * 0.35
+    deviation    = direction * effective * signal_scale * 0.35
 
-    # Taper the deviation with a half-cosine so it blends smoothly
+    if abs(deviation) < 1e-8:
+        return signal
+
     taper = 0.5 * (1 - np.cos(np.linspace(0, np.pi, st_len)))
 
     for peak in r_peaks:
@@ -156,66 +180,44 @@ def _apply_st_change(signal: np.ndarray, r_peaks: np.ndarray,
     return out
 
 
+# ── Main entry point ──────────────────────────────────────────────────────────
+
 def process_abnormality_mode(base_signal: np.ndarray,
                               sr: int,
                               weights: dict) -> np.ndarray:
     """
-    Apply weighted ECG morphology abnormalities to a real signal.
-
-    Args:
-        base_signal : raw ECG signal array
-        sr          : sample rate of base_signal
-        weights     : dict with any of:
-                        "lvh"        float 0-2  (voltage increase)
-                        "bbb"        float 0-2  (QRS widening)
-                        "st_dep"     float 0-2  (ST depression)
-                        "st_elev"    float 0-2  (ST elevation)
-
-    Returns:
-        modified signal, same length as base_signal
+    Apply weighted ECG morphology changes to ALL peaks.
     """
-    mixed = base_signal.copy().astype(np.float64)
-
-    # Detect R peaks once — reused by all processors
+    mixed   = base_signal.copy().astype(np.float64)
     r_peaks = _detect_r_peaks(mixed, sr)
 
     if len(r_peaks) == 0:
-        print("WARNING: No R peaks detected — returning original signal")
+        print("WARNING: No R peaks detected")
         return base_signal
 
-    print(f"  Detected {len(r_peaks)} R peaks, "
-          f"estimated BPM: {60 / (np.mean(np.diff(r_peaks)) / sr):.0f}")
+    print(f"  R peaks detected: {len(r_peaks)}")
 
-    # Apply each pathology in order
-    lvh_w    = float(weights.get("lvh",     0.0))
-    bbb_w    = float(weights.get("bbb",     0.0))
-    st_dep_w = float(weights.get("st_dep",  0.0))
-    st_el_w  = float(weights.get("st_elev", 0.0))
+    lvh_w    = float(weights.get("lvh",     1.0))
+    bbb_w    = float(weights.get("bbb",     1.0))
+    st_dep_w = float(weights.get("st_dep",  1.0))
+    st_el_w  = float(weights.get("st_elev", 1.0))
 
-    if lvh_w > 0:
+    if lvh_w != 1.0:
         mixed = _apply_lvh(mixed, r_peaks, sr, lvh_w)
-        print(f"  Applied LVH  (weight={lvh_w:.2f})")
 
-    if bbb_w > 0:
+    if bbb_w != 1.0:
         mixed = _apply_bbb(mixed, r_peaks, sr, bbb_w)
-        print(f"  Applied BBB  (weight={bbb_w:.2f})")
 
-    if st_dep_w > 0:
+    if st_dep_w != 1.0:
         mixed = _apply_st_change(mixed, r_peaks, sr, st_dep_w, direction=-1)
-        print(f"  Applied ST depression (weight={st_dep_w:.2f})")
 
-    if st_el_w > 0:
+    if st_el_w != 1.0:
         mixed = _apply_st_change(mixed, r_peaks, sr, st_el_w, direction=+1)
-        print(f"  Applied ST elevation  (weight={st_el_w:.2f})")
 
-    # Normalize relative to the ORIGINAL signal scale, not the mixed signal.
-    # This preserves the LVH high-voltage effect — we scale so the original
-    # baseline sits at its original level, not so the new peak sits at 1.0.
-    orig_max = np.max(np.abs(base_signal))
-    if orig_max > 0 and lvh_w == 0:
-        # Only normalize if no LVH — LVH intentionally increases amplitude
+    if lvh_w == 1.0:
+        orig_max  = np.max(np.abs(base_signal))
         mixed_max = np.max(np.abs(mixed))
-        if mixed_max > 0:
+        if mixed_max > 0 and orig_max > 0:
             mixed = mixed / mixed_max * orig_max
 
     return mixed.astype(np.float32)
