@@ -15,8 +15,10 @@ const CANVAS_HEIGHT = 220;
  *   label    – title
  *   minFreq  – visible freq lower bound
  *   maxFreq  – visible freq upper bound
+ *   minTime  – visible time lower bound
+ *   maxTime  – visible time upper bound
  */
-export default function Spectrogram({ freqs, times, data, label, minFreq, maxFreq }) {
+export default function Spectrogram({ freqs, times, data, label, minFreq, maxFreq, minTime, maxTime }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [canvasWidth, setCanvasWidth] = useState(600);
@@ -64,9 +66,9 @@ export default function Spectrogram({ freqs, times, data, label, minFreq, maxFre
     // Freq bounds
     const freqMin = minFreq ?? freqs[0];
     const freqMax = maxFreq ?? freqs[freqs.length - 1];
-    // Full time range
-    const timeMin = times[0];
-    const timeMax = times[times.length - 1];
+    // Time bounds (Horizontal) driven by props
+    const timeMin = minTime ?? times[0];
+    const timeMax = maxTime ?? times[times.length - 1];
 
     // Global dB range for colormap
     let globalMin = Infinity, globalMax = -Infinity;
@@ -114,15 +116,18 @@ export default function Spectrogram({ freqs, times, data, label, minFreq, maxFre
         const d = Math.abs(freqs[r] - targetFreq);
         if (d < bestFDist) { bestFDist = d; freqIdx = r; }
       }
-
+      
       for (let px = 0; px < pw; px++) {
         const timeFrac = px / (pw - 1);
+        // Map targetTime to the visible window, not the whole array
         const targetTime = timeMin + timeFrac * (timeMax - timeMin);
-        let timeIdx = 0, bestTDist = Infinity;
-        for (let c = 0; c < cols; c++) {
-          const d = Math.abs(times[c] - targetTime);
-          if (d < bestTDist) { bestTDist = d; timeIdx = c; }
-        }
+        
+        // Find the index in the 'times' array that matches this targetTime
+        let timeIdx = 0;
+        const totalDuration = times[times.length - 1] - times[0];
+        const timeStep = totalDuration / (times.length - 1);
+        timeIdx = Math.round((targetTime - times[0]) / timeStep);
+
         const v = data[freqIdx]?.[timeIdx] ?? globalMin;
         const [R, G, B] = colorFor(v);
         const idx = (py * pw + px) * 4;
@@ -203,7 +208,7 @@ export default function Spectrogram({ freqs, times, data, label, minFreq, maxFre
     ctx.fillText('dB',                       legendX + LEGEND_W + 2, PAD.top + plotH / 2 + 4);
     ctx.fillText(`${Math.round(globalMin)}`, legendX + LEGEND_W + 2, PAD.top + plotH);
 
-  }, [freqs, times, data, minFreq, maxFreq, canvasWidth]);
+  }, [freqs, times, data, minFreq, maxFreq, minTime, maxTime, canvasWidth]);
 
   return (
     <div ref={containerRef} style={{ width: '100%' }}>

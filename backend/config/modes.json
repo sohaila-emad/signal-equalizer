@@ -1,28 +1,58 @@
 {
   "musical": {
+    "label": "Musical AI (HTDemucs)",
+    "description": "AI-driven source separation. Each slider controls an isolated ground-truth stem based on spectral analysis.",
     "bands": [
-      { "id": "sub", "label": "Sub Bass", "min_hz": 20, "max_hz": 60 },
-      { "id": "bass", "label": "Bass", "min_hz": 60, "max_hz": 250 },
-      { "id": "low_mid", "label": "Low Mid", "min_hz": 250, "max_hz": 1000 },
-      { "id": "high_mid", "label": "High Mid", "min_hz": 1000, "max_hz": 4000 },
-      { "id": "presence", "label": "Presence", "min_hz": 4000, "max_hz": 6000 },
-      { "id": "brilliance", "label": "Brilliance", "min_hz": 6000, "max_hz": 20000 }
+      { 
+        "id": "drums", 
+        "label": "Drums & Percussion", 
+        "min_hz": 30, 
+        "max_hz": 16000, 
+        "color": "#e74c3c",
+        "description": "Impact and transients: Kick, Snare, Cymbals."
+      },
+      { 
+        "id": "bass", 
+        "label": "Bass Guitar/Synth", 
+        "min_hz": 20, 
+        "max_hz": 500, 
+        "color": "#3498db",
+        "description": "Sub-harmonics and low-end rhythmic foundation."
+      },
+      { 
+        "id": "vocals", 
+        "label": "Lead Vocals", 
+        "min_hz": 150, 
+        "max_hz": 8000, 
+        "color": "#2ecc71",
+        "description": "Human vocal range and harmonic presence."
+      },
+      { 
+        "id": "other", 
+        "label": "Instruments (Other)", 
+        "min_hz": 200, 
+        "max_hz": 15000, 
+        "color": "#f1c40f",
+        "description": "Guitars, keys, and background textures."
+      }
     ],
     "wavelet_config": {
       "wavelet": "db8",
       "levels": 6,
       "band_labels": {
-        "level_1": "Brilliance",
-        "level_2": "Presence",
-        "level_3": "High Mid",
-        "level_4": "Low Mid",
-        "level_5": "Bass",
-        "level_6": "Sub Bass",
-        "approx": "Deep Sub"
+        "level_1": "Cymbal Shimmer (D3)",
+        "level_2": "Vocal Sibilance (D2)",
+        "level_3": "Instrument Clarity (D1)",
+        "level_4": "Vocal/Guitar Mids",
+        "level_5": "Drum Thump/Kick",
+        "level_6": "Sub Foundation",
+        "approx": "Deep Sub/DC"
       }
     }
   },
   "animal": {
+    "label": "Bioacoustic Analysis",
+    "description": "Analyze animal vocalizations across frequency ranges.",
     "bands": [
       { "id": "low_calls", "label": "Low Calls", "min_hz": 50, "max_hz": 500 },
       {
@@ -39,16 +69,18 @@
       "wavelet": "db6",
       "levels": 5,
       "band_labels": {
-        "level_1": "High Calls",
-        "level_2": "Mid-High Calls",
-        "level_3": "Mid Calls",
-        "level_4": "Low-Mid Calls",
-        "level_5": "Low Calls",
-        "approx": "Infrasound"
+        "level_1": "High Frequency Calls",
+        "level_2": "Mid-High Harmonics",
+        "level_3": "Body Resonance",
+        "level_4": "Low-Mid Tones",
+        "level_5": "Fundamental Frequency",
+        "approx": "Infrasound/Ambient"
       }
     }
   },
   "human": {
+    "label": "Speech & Voice",
+    "description": "Human speech processing and formant isolation.",
     "bands": [
       { "id": "low_voice", "label": "Low Voice", "min_hz": 80, "max_hz": 300 },
       {
@@ -66,12 +98,12 @@
       "wavelet": "sym4",
       "levels": 5,
       "band_labels": {
-        "level_1": "Sibilance",
-        "level_2": "Formants High",
-        "level_3": "Formants Low",
-        "level_4": "Voice Fundamental",
-        "level_5": "Low Voice",
-        "approx": "Sub-vocal"
+        "level_1": "Sibilance (s/sh/f)",
+        "level_2": "Upper Formants",
+        "level_3": "Lower Formants",
+        "level_4": "Fundamental Pitch",
+        "level_5": "Chest Resonance",
+        "approx": "Sub-vocal/Baseline"
       }
     }
   },
@@ -87,16 +119,17 @@
       "wavelet": "db4",
       "levels": 4,
       "band_labels": {
-        "level_1": "Muscle Noise",
-        "level_2": "QRS Complex",
-        "level_3": "P & T Waves",
-        "level_4": "Baseline Wander",
-        "approx": "DC Component"
+        "level_1": "Muscle Noise/High Freq",
+        "level_2": "QRS Complex (High energy)",
+        "level_3": "P & T Waves (Low energy)",
+        "level_4": "Baseline Wander (Respiration)",
+        "approx": "DC Offset/Sub-0.5Hz"
       }
     }
   },
-  
   "generic": {
+    "label": "Standard Equalizer",
+    "description": "General purpose frequency adjustment.",
     "bands": [],
     "wavelet_config": {
       "wavelet": "db4",

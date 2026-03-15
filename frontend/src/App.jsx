@@ -112,6 +112,48 @@ function ZoomPanBar({ freqMin, freqMax, visMin, visMax, onVisChange, isAudiogram
   );
 }
 
+/* ── TimePanBar ── */
+function TimePanBar({ timeMin, timeMax, visMin, visMax, onVisChange }) {
+  const fullSpan = timeMax - timeMin;
+  const visSpan  = visMax  - visMin;
+
+  const zoom = (factor) => {
+    const center  = visMin + visSpan * 0.5;
+    const newSpan = Math.min(fullSpan, Math.max(fullSpan * 0.01, visSpan * factor));
+    let lo = center - newSpan * 0.5;
+    let hi = lo + newSpan;
+    if (lo < timeMin) { lo = timeMin; hi = lo + newSpan; }
+    if (hi > timeMax) { hi = timeMax; lo = hi - newSpan; }
+    onVisChange(Math.max(timeMin, lo), Math.min(timeMax, hi));
+  };
+
+  const pan = (dir) => {
+    const step = visSpan * 0.25;
+    const lo   = Math.max(timeMin, Math.min(timeMax - visSpan, visMin + dir * step));
+    onVisChange(lo, lo + visSpan);
+  };
+
+  const fmt = (t) => `${t.toFixed(1)}s`;
+
+  return (
+    <div className="zoom-pan-bar">
+      <button className="btn" onClick={() => zoom(1 / 1.5)}>＋ In</button>
+      <button className="btn" onClick={() => zoom(1.5)}>－ Out</button>
+      <div className="zoom-pan-sep" />
+      <button className="btn" onClick={() => pan(-1)}>◀ Left</button>
+      <button className="btn" onClick={() => pan(1)}>Right ▶</button>
+      <div className="zoom-pan-sep" />
+      <button className="btn" onClick={() => onVisChange(timeMin, timeMin + fullSpan * 0.1)}>Start Focus</button>
+      <button className="btn" onClick={() => onVisChange(timeMin, timeMax)}>Reset</button>
+      <div className="zoom-pan-sep" />
+      <div className="zoom-pan-info">
+        {fmt(visMin)} – {fmt(visMax)}
+        &nbsp;·&nbsp;{Math.round((visSpan / fullSpan) * 100)}%
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
 
   const [file,              setFile]              = useState(null);
@@ -151,6 +193,8 @@ export default function App() {
   // Shared view state for TripleViewers
   const [viewState, setViewState] = useState({});
 
+  const [visTime, setVisTime] = useState({ min: 0, max: 10 }); // Default 10s view
+
   const prevFftIdRef  = useRef(null);
   const debounceTimer = useRef(null);
   const requestAbortController = useRef(null);
@@ -180,6 +224,14 @@ export default function App() {
       setFreqRange((r) => ({ ...r, min: 0 }));
     }
   }, [isAudiogram]);
+
+  /* ── Reset time range when new spectrogram arrives ── */
+  useEffect(() => {
+    if (outputSpectrogram) {
+      const totalTime = outputSpectrogram.times[outputSpectrogram.times.length - 1];
+      setVisTime({ min: 0, max: totalTime });
+    }
+  }, [outputSpectrogram]);
 
   /* ── bandsLoadedFromConfig event ── */
   useEffect(() => {
@@ -325,6 +377,21 @@ export default function App() {
     if (!outputSignal || !sampleRate) return;
     const newName = file ? file.name.replace('.wav', '_eq.wav') : 'equalized_output.wav';
     downloadWav(outputSignal, sampleRate, newName);
+  };
+
+  const handleTimePan = (direction) => {
+    const span = visTime.max - visTime.min;
+    const step = span * 0.2;
+    const totalMax = outputSpectrogram.times[outputSpectrogram.times.length - 1];
+    
+    let newMin = Math.max(0, visTime.min + (direction * step));
+    let newMax = newMin + span;
+    
+    if (newMax > totalMax) {
+      newMax = totalMax;
+      newMin = Math.max(0, newMax - span);
+    }
+    setVisTime({ min: newMin, max: newMax });
   };
 
   const isEcg     = currentMode === 'ecg';
@@ -634,6 +701,13 @@ export default function App() {
               </div>
               {showSpectrograms && (
                 <div className="section-body">
+                  <TimePanBar
+                    timeMin={outputSpectrogram.times[0]}
+                    timeMax={outputSpectrogram.times[outputSpectrogram.times.length - 1]}
+                    visMin={visTime.min}
+                    visMax={visTime.max}
+                    onVisChange={(lo, hi) => setVisTime({ min: lo, max: hi })}
+                  />
                   <div className="spectrogram-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
                     {inputSpectrogram && (
                       <Spectrogram
@@ -642,6 +716,8 @@ export default function App() {
                         data={inputSpectrogram.values}
                         minFreq={visFreq.min}
                         maxFreq={visFreq.max}
+                        minTime={visTime.min}
+                        maxTime={visTime.max}
                         label="Input"
                       />
                     )}
@@ -652,6 +728,8 @@ export default function App() {
                         data={outputSpectrogram.values}
                         minFreq={visFreq.min}
                         maxFreq={visFreq.max}
+                        minTime={visTime.min}
+                        maxTime={visTime.max}
                         label="FFT Output"
                       />
                     )}
