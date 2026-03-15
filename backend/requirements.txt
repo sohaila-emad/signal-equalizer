@@ -1,6 +1,28 @@
+# Core backend
 Flask>=3.0.0
 flask-cors>=4.0.0
 numpy>=1.26.0
 librosa>=0.10.0
 soundfile>=0.12.1
 PyWavelets>=1.5.0
+scipy>=1.11.0
+
+# Voice separation — install in this order to avoid conflicts:
+#   pip install torch torchaudio          (or with --index-url for CPU/CUDA builds)
+#   pip install asteroid --no-deps
+#   pip install julius huggingface_hub --no-deps
+#   pip install pytorch-lightning --no-deps
+#   pip install lightning-utilities
+#   pip install torchmetrics --no-deps
+#
+# torch and torchaudio are NOT listed here because the correct build
+# (CPU vs CUDA) must be chosen by the user:
+#   CPU:  pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+#   CUDA: pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+asteroid
+julius
+huggingface_hub
+pytorch-lightning
+lightning-utilities
+torchmetrics
+requests

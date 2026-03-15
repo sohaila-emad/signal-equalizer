@@ -3,6 +3,7 @@ import './App.css';
 import SliderPanel from './components/Equalizer/SliderPanel';
 import LinkedViewers from './components/Viewers/LinkedViewers';
 import TripleViewers from './components/Viewers/TripleViewers';
+import VoiceSeparation from './components/Separation/VoiceSeparation';
 // Wavelet dropdown options
 const WAVELET_OPTIONS = [
   { value: 'db4',  label: 'db4 (ECG)' },
@@ -15,7 +16,7 @@ import FftGraph from './components/Graphs/FftGraph';
 import Spectrogram from './components/Graphs/Spectrogram';
 import FileUploader from './components/Layout/FileUploader';
 import { uploadAndTransform, getModes } from './services/api';
-import { calculateBPM, downloadWav } from './utils'; // Ensure downloadWav is exported from utils.js
+import { calculateBPM, downloadWav } from './utils';
 
 /* ── SVG helpers ── */
 function Icon({ d, size = 14 }) {
@@ -215,7 +216,6 @@ export default function App() {
       outputMag: result.output_fft,
     });
 
-    // --- Multi-output fields ---
     setOutputWavelet(result.output_wavelet_audio ? new Float32Array(result.output_wavelet_audio) : null);
     setOutputAI(result.output_ai ? new Float32Array(result.output_ai) : null);
     setWaveletLevelBands(result.wavelet_level_bands || []);
@@ -226,7 +226,6 @@ export default function App() {
 
   const processSignalWithBands = async (bandsArg) => {
     try {
-      // Cancel any in-flight request; new interaction should override it
       requestAbortController.current?.abort();
       requestAbortController.current = new AbortController();
 
@@ -260,7 +259,6 @@ export default function App() {
     if (!file) return;
     const run = async () => {
       try {
-        // Cancel any in-flight request before starting a new one.
         requestAbortController.current?.abort();
         requestAbortController.current = new AbortController();
 
@@ -309,11 +307,10 @@ export default function App() {
     }
 
     if (newMode === 'musical') {
-      setVisFreq({ min: 20, max: 20000 }); // Zoom out to see the full musical spectrum
+      setVisFreq({ min: 20, max: 20000 });
       setFreqRange({ min: 0, max: 22050 });
     }
 
-    // Set wavelet type/levels from mode config
     const wcfg = allModes[newMode]?.wavelet_config;
     if (wcfg) {
       setWaveletType(wcfg.wavelet || 'db4');
@@ -334,7 +331,6 @@ export default function App() {
   const hasResults = inputSignal && outputSignal && !loading;
 
   /* ── Mode tab list ── */
-  // Only include 'generic' if not present in allModes
   const modeEntries = Object.entries({
     ...(allModes.generic ? {} : { generic: { label: 'Generic' } }),
     ...allModes,
@@ -392,7 +388,6 @@ export default function App() {
               <span className="status-size">{(file.size / 1024).toFixed(0)} KB</span>
             )}
           </div>
-          {/* Integrated Export Button here in the sidebar */}
           {hasResults && (
             <button 
               className="btn btn-primary" 
@@ -432,7 +427,7 @@ export default function App() {
           </div>
         )}
 
-        {/* Equalizer bands: Wavelet and FFT panels, improved order and button placement */}
+        {/* Equalizer bands */}
         {file && (
           <div className="section-card">
             <div className="section-head">
@@ -448,7 +443,7 @@ export default function App() {
               </div>
             </div>
             <div className="section-body">
-              {/* 1. Wavelet controls row */}
+              {/* Wavelet controls row */}
               <div className="wavelet-controls-row" style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 12 }}>
                 <label style={{ fontWeight: 500 }}>
                   Wavelet:
@@ -482,7 +477,7 @@ export default function App() {
                 </span>
               </div>
 
-              {/* 2. Collapsible Wavelet Bands */}
+              {/* Collapsible Wavelet Bands */}
               <div className="collapsible-panel">
                 <button type="button" onClick={() => setWaveletBandsOpen(p => !p)} style={{ fontWeight: 600, marginBottom: 4 }}>
                   Wavelet Bands ({waveletConfigUsed?.wavelet || waveletType}) {waveletBandsOpen ? '▲' : '▼'}
@@ -498,7 +493,7 @@ export default function App() {
                 )}
               </div>
 
-              {/* 3. Collapsible FFT Bands and Add/Save/Load buttons (side by side) */}
+              {/* Collapsible FFT Bands */}
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginTop: 12 }}>
                 <div className="collapsible-panel" style={{ flex: 1 }}>
                   <button type="button" onClick={() => setFftBandsOpen(p => !p)} style={{ fontWeight: 600, marginBottom: 4 }}>
@@ -517,6 +512,14 @@ export default function App() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* ── Voice Separation panel (Human Voice mode only) ── */}
+        {file && currentMode === 'human' && (
+          <VoiceSeparation
+            file={file}
+            disabled={loading}
+          />
         )}
 
         {/* Loading */}
