@@ -54,13 +54,16 @@ function FftGraph({ freqs, inputMag, outputMag, isAudiogram, bands = [], label, 
 
     const toX = (freq) => {
       if (isAudiogram) {
-        const logMin = Math.log10(Math.max(1, minFreq));
-        const logMax = Math.log10(Math.max(1, maxFreq));
+        // Use viewMin/viewMax (which fall back safely when props are undefined)
+        const logMin  = Math.log10(Math.max(1, viewMin));
+        const logMax  = Math.log10(Math.max(1, viewMax));
         const logCurr = Math.log10(Math.max(1, freq));
+        if (logMax === logMin) return PAD.left;
         return PAD.left + ((logCurr - logMin) / (logMax - logMin)) * plotW;
-        } else {
-          // Linear scale (Standard)
-        return PAD.left + ((freq - minFreq) / (maxFreq - minFreq)) * plotW;
+      } else {
+        // Linear scale — use viewMin/viewMax, not raw props
+        if (viewMax === viewMin) return PAD.left;
+        return PAD.left + ((freq - viewMin) / (viewMax - viewMin)) * plotW;
       }
     };
 

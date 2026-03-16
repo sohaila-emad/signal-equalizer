@@ -1,7 +1,7 @@
 {
   "musical": {
     "label": "Musical AI (HTDemucs)",
-    "description": "AI-driven source separation. Each slider controls an isolated ground-truth stem based on spectral analysis.",
+    "description": "AI-driven source separation. The Manual EQ bands below will automatically re-calibrate to the signal's detected ground-truth ranges.",
     "bands": [
       { 
         "id": "drums", 
@@ -9,7 +9,7 @@
         "min_hz": 30, 
         "max_hz": 16000, 
         "color": "#e74c3c",
-        "description": "Impact and transients: Kick, Snare, Cymbals."
+        "description": "Adaptive Range: Calibrated by AI analysis of percussion transients."
       },
       { 
         "id": "bass", 
@@ -17,7 +17,7 @@
         "min_hz": 20, 
         "max_hz": 500, 
         "color": "#3498db",
-        "description": "Sub-harmonics and low-end rhythmic foundation."
+        "description": "Adaptive Range: Calibrated by AI analysis of low-end rhythmic foundation."
       },
       { 
         "id": "vocals", 
@@ -25,7 +25,7 @@
         "min_hz": 150, 
         "max_hz": 8000, 
         "color": "#2ecc71",
-        "description": "Human vocal range and harmonic presence."
+        "description": "Adaptive Range: Calibrated by AI analysis of human vocal formants."
       },
       { 
         "id": "other", 
@@ -33,7 +33,7 @@
         "min_hz": 200, 
         "max_hz": 15000, 
         "color": "#f1c40f",
-        "description": "Guitars, keys, and background textures."
+        "description": "Adaptive Range: Calibrated by AI analysis of melodic textures."
       }
     ],
     "wavelet_config": {

@@ -143,6 +143,7 @@ def register_routes(app: Flask) -> None:
                 bands = mode_cfg.get("bands", [])
 
             y_ai = None
+            ai_analysis = None  # <--- New variable to hold the Ground Truth data
 
             if mode == "ecg_abnormalities":
                 y_eq = process_abnormality_mode(y, sr, weights)
@@ -152,10 +153,12 @@ def register_routes(app: Flask) -> None:
                 if mode == "musical" and use_ai:
                     try:
                         from app.services.music_model import process_from_array
-                        y_ai = process_from_array(y.astype(np.float32), int(sr), weights)
+                        # UPDATED: Now receives both the audio and the analysis dict
+                        y_ai, ai_analysis = process_from_array(y.astype(np.float32), int(sr), weights)
                     except Exception as e:
                         print(f"[musical AI] failed: {e} — using equalizer output")
                         y_ai = None
+                        ai_analysis = None
 
             # 3. Wavelet Pipeline
             wavelet_weights_raw = request.form.get("wavelet_weights")
@@ -195,6 +198,7 @@ def register_routes(app: Flask) -> None:
                 "output_audio": y_eq[::step].tolist(),
                 "output_wavelet_audio": y_wavelet[::step].tolist(),
                 "output_ai": y_ai[::step].tolist() if y_ai is not None else None,
+                "ai_analysis": ai_analysis,  # <--- INJECTED: Sends detected min/max to React
                 "spectrogram_input": {"freqs": in_f, "times": in_t, "values": in_S},
                 "spectrogram_output": {"freqs": out_f, "times": out_t, "values": out_S},
                 "fft_freqs": freq_axis,
@@ -206,7 +210,6 @@ def register_routes(app: Flask) -> None:
         except Exception as e:
             traceback.print_exc()
             return jsonify({"error": "Internal server error", "detail": str(e)}), 500
-
     @app.post("/separate")
     def separate():
         """
