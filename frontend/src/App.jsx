@@ -246,7 +246,7 @@ export default function App() {
     setOutputSignal(new Float32Array(result.output_audio));
     setSampleRate(result.sample_rate);
 
-    if (currentMode && currentMode.startsWith('ecg')) {
+    if (currentMode === 'ecg') {
       const analysis = calculateBPM(new Float32Array(result.output_audio), result.sample_rate);
       setEcgAnalysis(analysis || { bpm: null, type: 'Unknown' });
     } else {
@@ -351,7 +351,7 @@ export default function App() {
     setOutputAI(null);
     setUseAiModel(false);
 
-    if (newMode && newMode.startsWith('ecg')) setIsAudiogram(false);
+    if (newMode === 'ecg') setIsAudiogram(false);
 
     if (newMode !== 'generic') {
       setBands(allModes[newMode]?.bands ?? []);
@@ -380,7 +380,7 @@ export default function App() {
     downloadWav(outputSignal, sampleRate, newName);
   };
 
-  const isEcg     = !!(currentMode && currentMode.startsWith('ecg'));
+  const isEcg     = currentMode === 'ecg';
   const hasResults = inputSignal && outputSignal && !loading;
 
   /* ── Mode tab list ── */
@@ -466,7 +466,7 @@ export default function App() {
         )}
 
         {/* No file */}
-        {!file && !(currentMode && currentMode.startsWith('ecg')) && (
+        {!file && currentMode !== 'ecg' && (
           <div className="section-card">
             <div className="empty-state">
               <div className="empty-icon">
@@ -481,7 +481,7 @@ export default function App() {
         )}
 
         {/* Equalizer bands */}
-        {file && !(currentMode && currentMode.startsWith('ecg')) && (
+        {file && currentMode !== 'ecg' && (
           <div className="section-card">
             <div className="section-head">
               <div className="section-head-left">
@@ -576,7 +576,7 @@ export default function App() {
         )}
 
         {/* Loading */}
-        {loading && !(currentMode && currentMode.startsWith('ecg')) && (
+        {loading && currentMode !== 'ecg' && (
           <div className="loading-card">
             <div className="eq-bars">
               {[...Array(7)].map((_, i) => <div key={i} className="eq-bar" />)}
@@ -586,7 +586,7 @@ export default function App() {
         )}
 
         {/* ECG AI Analysis — self-contained when ECG mode active */}
-        {currentMode && currentMode.startsWith('ecg') && <EcgAnalysis setEcgAnalysis={setEcgAnalysis} />}
+        {currentMode === 'ecg' && <EcgAnalysis setEcgAnalysis={setEcgAnalysis} />}
 
         {/* Results */}
         {hasResults && !isEcg && (
