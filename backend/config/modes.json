@@ -75,6 +75,16 @@
       }
     }
   },
+  "ecg": {
+    "label": "ECG AI Classifier",
+    "description": "Upload a WFDB ECG record (.hea + .dat) to classify arrhythmias with ECGNet and visualize Grad-CAM attention.",
+    "bands": [],
+    "wavelet_config": {
+      "wavelet": "db4",
+      "levels": 4,
+      "band_labels": {}
+    }
+  },
   "ecg_abnormalities": {
     "label": "Clinical ECG Simulator",
     "description": "Morphology-based pathology simulation (LVH, BBB, and ST-Depression).",

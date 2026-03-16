@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
-export default function FileUploader({ onFileSelect, file }) {
+export default function FileUploader({ onFileSelect, file, mode }) {
+  if (mode && mode.startsWith && mode.startsWith('ecg')) return null;
   const [dragging, setDragging] = useState(false);
 
   const handleChange = (e) => {

@@ -131,6 +131,28 @@ export async function saveConfig(bands) {
 }
 
 /**
+ * Analyze an ECG record using ECGNet + Grad-CAM.
+ * @param {File} heaFile - The .hea WFDB header file
+ * @param {File} datFile - The .dat WFDB data file
+ * @returns {Promise<Object>} - { predicted_class, class_index, probabilities, gradcam, leads, sample_rate }
+ */
+export async function analyzeEcg(heaFile, datFile) {
+  const formData = new FormData();
+  formData.append('hea_file', heaFile);
+  formData.append('dat_file', datFile);
+
+  const response = await fetch(`${API_BASE}/ecg/analyze`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: 'ECG analysis failed' }));
+    throw new Error(err.error || 'ECG analysis failed');
+  }
+  return response.json();
+}
+
+/**
  * Get all available modes from backend.
  * @returns {Promise<Object>} - Modes configuration from modes.json
  */

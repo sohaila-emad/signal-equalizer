@@ -4,6 +4,7 @@ import SliderPanel from './components/Equalizer/SliderPanel';
 import LinkedViewers from './components/Viewers/LinkedViewers';
 import TripleViewers from './components/Viewers/TripleViewers';
 import VoiceSeparation from './components/Separation/VoiceSeparation';
+import EcgAnalysis from './components/ECG/EcgAnalysis';
 // Wavelet dropdown options
 const WAVELET_OPTIONS = [
   { value: 'db4',  label: 'db4 (ECG)' },
@@ -193,7 +194,7 @@ export default function App() {
     setOutputSignal(new Float32Array(result.output_audio));
     setSampleRate(result.sample_rate);
 
-    if (currentMode === 'ecg') {
+    if (currentMode && currentMode.startsWith('ecg')) {
       const analysis = calculateBPM(new Float32Array(result.output_audio), result.sample_rate);
       setEcgAnalysis(analysis || { bpm: null, type: 'Unknown' });
     } else {
@@ -298,7 +299,7 @@ export default function App() {
     setOutputAI(null);
     setUseAiModel(false);
 
-    if (newMode === 'ecg') setIsAudiogram(false);
+    if (newMode && newMode.startsWith('ecg')) setIsAudiogram(false);
 
     if (newMode !== 'generic') {
       setBands(allModes[newMode]?.bands ?? []);
@@ -327,7 +328,7 @@ export default function App() {
     downloadWav(outputSignal, sampleRate, newName);
   };
 
-  const isEcg     = currentMode === 'ecg';
+  const isEcg     = !!(currentMode && currentMode.startsWith('ecg'));
   const hasResults = inputSignal && outputSignal && !loading;
 
   /* ── Mode tab list ── */
@@ -355,7 +356,7 @@ export default function App() {
 
         <div className="sidebar-upload">
           <span className="sidebar-section-label">Audio Source</span>
-          <FileUploader onFileSelect={setFile} file={file} />
+          <FileUploader onFileSelect={setFile} file={file} mode={currentMode} />
         </div>
 
         <nav className="sidebar-modes">
@@ -413,7 +414,7 @@ export default function App() {
         )}
 
         {/* No file */}
-        {!file && (
+        {!file && !(currentMode && currentMode.startsWith('ecg')) && (
           <div className="section-card">
             <div className="empty-state">
               <div className="empty-icon">
@@ -428,7 +429,7 @@ export default function App() {
         )}
 
         {/* Equalizer bands */}
-        {file && (
+        {file && !(currentMode && currentMode.startsWith('ecg')) && (
           <div className="section-card">
             <div className="section-head">
               <div className="section-head-left">
@@ -523,7 +524,7 @@ export default function App() {
         )}
 
         {/* Loading */}
-        {loading && (
+        {loading && !(currentMode && currentMode.startsWith('ecg')) && (
           <div className="loading-card">
             <div className="eq-bars">
               {[...Array(7)].map((_, i) => <div key={i} className="eq-bar" />)}
@@ -532,8 +533,11 @@ export default function App() {
           </div>
         )}
 
+        {/* ECG AI Analysis — self-contained when ECG mode active */}
+        {currentMode && currentMode.startsWith('ecg') && <EcgAnalysis setEcgAnalysis={setEcgAnalysis} />}
+
         {/* Results */}
-        {hasResults && (
+        {hasResults && currentMode !== 'ecg' && (
           <>
             {/* Waveforms */}
             <div className="section-card">

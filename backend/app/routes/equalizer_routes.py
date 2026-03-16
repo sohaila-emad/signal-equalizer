@@ -288,3 +288,31 @@ def register_routes(app: Flask) -> None:
         except Exception as e:
             traceback.print_exc()
             return jsonify({"error": "Separation failed", "detail": str(e)}), 500
+
+    @app.post("/ecg/analyze")
+    def ecg_analyze():
+        """
+        Accepts multipart/form-data with two files:
+        - 'hea_file': the .hea file
+        - 'dat_file': the .dat file
+
+        Returns JSON from analyze_ecg()
+        """
+        if 'hea_file' not in request.files or 'dat_file' not in request.files:
+            return jsonify({"error": "Both .hea and .dat files required"}), 400
+
+        hea_file = request.files['hea_file']
+        dat_file = request.files['dat_file']
+
+        if not hea_file.filename.endswith('.hea'):
+            return jsonify({"error": "First file must be .hea"}), 400
+        if not dat_file.filename.endswith('.dat'):
+            return jsonify({"error": "Second file must be .dat"}), 400
+
+        from app.services.ecg_service import analyze_ecg
+        try:
+            result = analyze_ecg(hea_file.read(), dat_file.read())
+            return jsonify(result)
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
