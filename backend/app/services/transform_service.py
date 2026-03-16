@@ -5,100 +5,80 @@ from typing import Dict, Any, List, Tuple
 def compute_spectrogram(
     signal: np.ndarray,
     sample_rate: float,
-    window_size: int = 512,
-    hop_size: int = 256,
-    max_samples: int = 16384,
+    window_size: int = 1024, # Slightly larger for better freq resolution
+    target_points: int = 800, # Target number of time columns to send to UI
 ) -> Tuple[List[float], List[float], List[List[float]]]:
     """
-    Compute spectrogram using np.fft and return in dB scale.
-
-    Parameters
-    ----------
-    signal : np.ndarray
-        Time-domain signal.
-    sample_rate : float
-        Sampling rate in Hz.
-    window_size : int
-        FFT window size.
-    hop_size : int
-        Number of samples between successive windows.
-    max_samples : int
-        Maximum number of samples to process for performance.
-
-    Returns
-    -------
-    Tuple[List[float], List[float], List[List[float]]]
-        (frequencies, times, spectrogram_db)
+    Dynamically adjusts hop_size to ensure the spectrogram covers the full signal
+    without exceeding memory limits.
     """
-    sig = signal[:max_samples]
-    N = len(sig)
-    
+    N = len(signal)
     if N < window_size:
-        raise ValueError("Signal too short for spectrogram")
-
+        # Fallback for very short signals
+        window_size = 2**int(np.log2(N)) if N > 2 else 2
+        
+    # --- DYNAMIC HOP SIZE ---
+    # We want (N / hop_size) to be roughly target_points
+    hop_size = max(window_size // 4, N // target_points)
+    
     window = np.hanning(window_size)
     frames = []
     times = []
 
+    # Slide through the WHOLE signal
     for start in range(0, N - window_size + 1, hop_size):
         end = start + window_size
-        segment = sig[start:end] * window
+        segment = signal[start:end] * window
         
-        # Use np.fft for spectrogram computation
+        # Compute magnitude spectrum
         spectrum = np.fft.rfft(segment)
-        frames.append(np.abs(spectrum))
+        mag = np.abs(spectrum)
+        
+        frames.append(mag)
         times.append((start + window_size / 2) / sample_rate)
 
     if not frames:
-        raise ValueError("No frames generated")
+        return [], [], []
 
-    S = np.stack(frames, axis=1)  # shape: (freq_bins, num_frames)
+    # Stack: Rows = Freq, Cols = Time
+    S = np.stack(frames, axis=1)
     freqs = np.fft.rfftfreq(window_size, d=1.0 / sample_rate)
 
-    # Convert to dB
-    S_db = 20.0 * np.log10(np.abs(S) + 1e-6)
+    # Log scale (dB) - Clip at -100dB to avoid log(0)
+    S_db = np.clip(20.0 * np.log10(S + 1e-5), -100, 0)
 
-    # Downsample for payload size
-    f_ds = freqs[::2]
-    t_ds = np.array(times)[::2]
-    S_ds = S_db[::2, ::2]
-
-    return f_ds.tolist(), t_ds.tolist(), S_ds.tolist()
+    # Final decimation: If we still have too many frequency bins (rows), 
+    # we take every 2nd or 4th bin to keep UI snappy.
+    row_step = max(1, S_db.shape[0] // 256) 
+    
+    return (
+        freqs[::row_step].tolist(), 
+        times, 
+        S_db[::row_step, :].tolist()
+    )
 
 
 def compute_fft_magnitude(
     signal: np.ndarray,
     sample_rate: float,
-    fft_size: int = 1024,
+    max_fft_bins: int = 2048,
 ) -> Tuple[List[float], List[float]]:
     """
-    Compute FFT magnitude spectrum using np.fft.
-
-    Parameters
-    ----------
-    signal : np.ndarray
-        Time-domain signal.
-    sample_rate : float
-        Sampling rate in Hz.
-    fft_size : int
-        FFT size.
-
-    Returns
-    -------
-    Tuple[List[float], List[float]]
-        (frequencies, magnitudes)
+    Computes the FFT of the entire signal, then downsamples the 
+    result so the frontend doesn't have to render 100,000 points.
     """
-    # Take the first fft_size samples, pad if necessary
-    block = signal[:fft_size]
-    if len(block) < fft_size:
-        block = np.pad(block, (0, fft_size - len(block)))
-
-    # Use np.fft.rfft for real signals
-    spectrum = np.fft.rfft(block)
+    N = len(signal)
+    
+    # We use rfft on the whole signal
+    spectrum = np.fft.rfft(signal)
     magnitude = np.abs(spectrum)
-    freqs = np.fft.rfftfreq(fft_size, d=1.0 / sample_rate)
+    freqs = np.fft.rfftfreq(N, d=1.0 / sample_rate)
 
-    return freqs.tolist(), magnitude.tolist()
+    # Downsample the frequency bins for the UI
+    # This ensures we don't send more than 2048 points to the graph
+    step = max(1, len(magnitude) // max_fft_bins)
+    
+    return freqs[::step].tolist(), magnitude[::step].tolist()
 
 
 # --- Wavelet Level Frequency Ranges Helper ---
