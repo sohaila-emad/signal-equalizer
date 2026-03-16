@@ -564,3 +564,44 @@ select:focus{border-color:var(--accent)}
   background: rgba(61, 139, 255, 0.18) !important;
   border-color: rgba(61, 139, 255, 0.45) !important;
 }
+
+/* ── Animal Separation query selector ── */
+.vs-query-selector {
+  margin-bottom: 12px;
+}
+.vs-query-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 8px;
+}
+.vs-query-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-mid);
+  cursor: pointer;
+}
+.vs-query-item input[type="checkbox"] {
+  accent-color: var(--accent-2);
+}
+.vs-custom-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.vs-custom-input {
+  flex: 1;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  color: var(--text-mid);
+  outline: none;
+}
+.vs-custom-input:focus {
+  border-color: rgba(61, 139, 255, 0.4);
+}

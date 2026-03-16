@@ -4,6 +4,7 @@ import SliderPanel from './components/Equalizer/SliderPanel';
 import LinkedViewers from './components/Viewers/LinkedViewers';
 import TripleViewers from './components/Viewers/TripleViewers';
 import VoiceSeparation from './components/Separation/VoiceSeparation';
+import AnimalSeparation from './components/Separation/AnimalSeparation';
 import EcgAnalysis from './components/ECG/EcgAnalysis';
 // Wavelet dropdown options
 const WAVELET_OPTIONS = [
@@ -570,6 +571,14 @@ export default function App() {
         {/* ── Voice Separation panel (Human Voice mode only) ── */}
         {file && currentMode === 'human' && (
           <VoiceSeparation
+            file={file}
+            disabled={loading}
+          />
+        )}
+
+        {/* ── Animal Sound Separation panel (Animal mode only) ── */}
+        {file && currentMode === 'animal' && (
+          <AnimalSeparation
             file={file}
             disabled={loading}
           />

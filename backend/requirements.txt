@@ -3,26 +3,38 @@ Flask>=3.0.0
 flask-cors>=4.0.0
 numpy>=1.26.0
 librosa>=0.10.0
-soundfile>=0.12.1
 PyWavelets>=1.5.0
 scipy>=1.11.0
 wfdb
-# Voice separation — install in this order to avoid conflicts:
-#   pip install torch torchaudio          (or with --index-url for CPU/CUDA builds)
-#   pip install asteroid --no-deps
-#   pip install julius huggingface_hub --no-deps
-#   pip install pytorch-lightning --no-deps
-#   pip install lightning-utilities
-#   pip install torchmetrics --no-deps
-#
-# torch and torchaudio are NOT listed here because the correct build
-# (CPU vs CUDA) must be chosen by the user:
-#   CPU:  pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
-#   CUDA: pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+requests
+
+# Voice separation (DPRNN)
 asteroid
 julius
 huggingface_hub
+torchmetrics
+
+# PyTorch + audio (CUDA 11.8) — used by both DPRNN and AudioSep
+--extra-index-url https://download.pytorch.org/whl/cu118
+torch==2.0.1
+torchaudio==2.0.2
+torchvision==0.15.2
 pytorch-lightning
 lightning-utilities
-torchmetrics
-requests
+
+# AudioSep dependencies
+lightning==2.0.0
+transformers==4.28.1
+ftfy==6.1.1
+braceexpand==0.1.7
+webdataset==0.2.48
+soundfile==0.12.1
+wget==3.2
+h5py==3.8.0
+torchlibrosa==0.1.0
+gdown
+gradio==3.47.1
+einops
+pyyaml
+tqdm
+setuptools<70
