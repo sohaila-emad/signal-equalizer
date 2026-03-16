@@ -2,7 +2,8 @@ import { useState } from 'react';
 import BandControls from './BandControls';
 import { loadConfig, saveConfig } from '../../services/api';
 
-export default function SliderPanel({ mode, bands, onBandsChange, weights, onWeightsChange }) {
+// Added isAiMode to the destructured props
+export default function SliderPanel({ mode, bands, onBandsChange, weights, onWeightsChange, isAiMode }) {
   const [saveStatus, setSaveStatus] = useState('');
   const isGeneric = mode === 'generic';
 
@@ -67,13 +68,22 @@ export default function SliderPanel({ mode, bands, onBandsChange, weights, onWei
       <div className="sliders">
         {bands.map((band) => {
           const value = weights[band.id] ?? 1;
+
+          // DYNAMIC RANGE LOGIC:
+          // If AI mode is on and the band has ai_min/max, use those. Otherwise fallback to standard min/max.
+          const effectiveMin = (isAiMode && band.ai_min !== undefined) ? band.ai_min : band.min_hz;
+          const effectiveMax = (isAiMode && band.ai_max !== undefined) ? band.ai_max : band.max_hz;
+
           const rangeLabel = band.ranges?.length > 0
             ? band.ranges.map((r) => `${r.min_hz}–${r.max_hz} Hz`).join(', ')
-            : `${band.min_hz}–${band.max_hz} Hz`;
+            : `${effectiveMin}–${effectiveMax} Hz`;
+
           return (
             <div key={band.id} className="slider-row">
               <div className="slider-label">
-                <strong>{band.label}</strong>
+                <strong style={{ color: isAiMode && band.ai_min !== undefined ? 'var(--accent)' : 'inherit' }}>
+                  {band.label} {isAiMode && band.ai_min !== undefined ? '(AI)' : ''}
+                </strong>
                 <span>{rangeLabel}</span>
               </div>
               <input

@@ -200,7 +200,7 @@ export default function App() {
   const prevFftIdRef  = useRef(null);
   const debounceTimer = useRef(null);
   const requestAbortController = useRef(null);
-
+  const isInternalUpdate = useRef(false);
   /* ── Load modes ── */
   useEffect(() => {
     getModes().then(setAllModes).catch(() => setError('Failed to load modes from server.'));
@@ -247,6 +247,25 @@ export default function App() {
     setOutputSignal(new Float32Array(result.output_audio));
     setSampleRate(result.sample_rate);
 
+if (result.ai_analysis && currentMode === 'musical') {
+    // 1. Mark this as an internal update so useEffect ignores it
+    isInternalUpdate.current = true;
+    
+    setBands(prevBands => prevBands.map(band => {
+      const aiData = result.ai_analysis[band.id];
+      if (aiData) {
+        // Only add the label if it's not already there
+        const cleanLabel = band.label.replace(' ', '');
+        return {
+          ...band,
+          min_hz: aiData.min_hz,
+          max_hz: aiData.max_hz,
+          label: `${cleanLabel} `
+        };
+      }
+      return band;
+    }));
+    }
     if (currentMode === 'ecg') {
       const analysis = calculateBPM(new Float32Array(result.output_audio), result.sample_rate);
       setEcgAnalysis(analysis || { bpm: null, type: 'Unknown' });
@@ -311,6 +330,10 @@ export default function App() {
   /* ── Debounced processing ── */
   useEffect(() => {
     if (!file) return;
+    if (isInternalUpdate.current) {
+      isInternalUpdate.current = false;
+      return; 
+    }
     const run = async () => {
       try {
         requestAbortController.current?.abort();
@@ -560,6 +583,7 @@ export default function App() {
                       onBandsChange={setBands}
                       weights={weights}
                       onWeightsChange={setWeights}
+                      isAiMode={useAiModel}
                     />
                   )}
                 </div>
