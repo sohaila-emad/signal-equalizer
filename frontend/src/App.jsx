@@ -5,6 +5,7 @@ import SliderPanel from './components/Equalizer/SliderPanel';
 import TripleViewers from './components/Viewers/TripleViewers';
 import EcgCineViewer from './components/Viewers/EcgCineViewer';
 import VoiceSeparation from './components/Separation/VoiceSeparation';
+import AnimalSeparation from './components/Separation/AnimalSeparation';
 import EcgAnalysis from './components/ECG/EcgAnalysis';
 // Wavelet dropdown options
 const WAVELET_OPTIONS = [
@@ -203,7 +204,7 @@ export default function App() {
   const prevFftIdRef  = useRef(null);
   const debounceTimer = useRef(null);
   const requestAbortController = useRef(null);
-
+  const isInternalUpdate = useRef(false);
   /* ── Load modes ── */
   useEffect(() => {
     getModes().then(setAllModes).catch(() => setError('Failed to load modes from server.'));
@@ -251,6 +252,32 @@ export default function App() {
     setSampleRate(result.sample_rate);
     // ECG BPM calculation is performed in EcgAnalysis; clear previous ECG analysis here
     setEcgAnalysis({ bpm: null, type: null });
+
+if (result.ai_analysis && currentMode === 'musical') {
+    // 1. Mark this as an internal update so useEffect ignores it
+    isInternalUpdate.current = true;
+    
+    setBands(prevBands => prevBands.map(band => {
+      const aiData = result.ai_analysis[band.id];
+      if (aiData) {
+        // Only add the label if it's not already there
+        const cleanLabel = band.label.replace(' ', '');
+        return {
+          ...band,
+          min_hz: aiData.min_hz,
+          max_hz: aiData.max_hz,
+          label: `${cleanLabel} `
+        };
+      }
+      return band;
+    }));
+    }
+    if (currentMode === 'ecg') {
+      const analysis = calculateBPM(new Float32Array(result.output_audio), result.sample_rate);
+      setEcgAnalysis(analysis || { bpm: null, type: 'Unknown' });
+    } else {
+      setEcgAnalysis({ bpm: null, type: null });
+    }
 
     setInputSpectrogram({
       freqs: result.spectrogram_input.freqs,
@@ -310,6 +337,10 @@ export default function App() {
   /* ── Debounced processing ── */
   useEffect(() => {
     if (!file) return;
+    if (isInternalUpdate.current) {
+      isInternalUpdate.current = false;
+      return; 
+    }
     const run = async () => {
       try {
         requestAbortController.current?.abort();
@@ -565,6 +596,7 @@ export default function App() {
                       onBandsChange={setBands}
                       weights={weights}
                       onWeightsChange={setWeights}
+                      isAiMode={useAiModel}
                     />
                   )}
                 </div>
@@ -600,6 +632,14 @@ export default function App() {
         {/* ── Voice Separation panel (Human Voice mode only) ── */}
         {file && currentMode === 'human' && (
           <VoiceSeparation
+            file={file}
+            disabled={loading}
+          />
+        )}
+
+        {/* ── Animal Sound Separation panel (Animal mode only) ── */}
+        {file && currentMode === 'animal' && (
+          <AnimalSeparation
             file={file}
             disabled={loading}
           />

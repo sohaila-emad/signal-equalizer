@@ -117,6 +117,41 @@ export async function separateVoices(file, nSrc = null, signal = undefined) {
 }
 
 /**
+ * Separate animal sounds from a WAV file using AudioSep.
+ *
+ * @param {File}   file    - The WAV file to process
+ * @param {string[]} queries - Text descriptions, e.g. ["dog barking", "cat meowing"]
+ * @param {AbortSignal} [signal] - Optional AbortController signal
+ * @returns {Promise<Object>} - { sources: [{ id, label, audio: Float32Array, sample_rate }], sample_rate }
+ */
+export async function separateAnimal(file, queries, signal = undefined) {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('queries', JSON.stringify(queries));
+
+  const response = await fetch(`${API_BASE}/separate_animal`, {
+    method: 'POST',
+    body: formData,
+    signal,
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(err.detail ?? err.error ?? `HTTP ${response.status}`);
+  }
+
+  const data = await response.json();
+
+  return {
+    ...data,
+    sources: data.sources.map((s) => ({
+      ...s,
+      audio: new Float32Array(s.audio),
+    })),
+  };
+}
+
+/**
  * Load saved generic configuration.
  * @returns {Promise<Object>} - { bands: [...] }
  */
