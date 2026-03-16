@@ -4,6 +4,7 @@ import SliderPanel from './components/Equalizer/SliderPanel';
 import LinkedViewers from './components/Viewers/LinkedViewers';
 import TripleViewers from './components/Viewers/TripleViewers';
 import VoiceSeparation from './components/Separation/VoiceSeparation';
+import EcgAnalysis from './components/ECG/EcgAnalysis';
 // Wavelet dropdown options
 const WAVELET_OPTIONS = [
   { value: 'db4',  label: 'db4 (ECG)' },
@@ -157,10 +158,6 @@ function TimePanBar({ timeMin, timeMax, visMin, visMax, onVisChange }) {
 export default function App() {
 
   const [file,              setFile]              = useState(null);
-  const handleFileSelect = (file) => {
-    setUserPanZoom(false);
-    setFile(file);
-  };
   const [currentMode,       setCurrentMode]       = useState('generic');
   const [allModes,          setAllModes]          = useState({});
   const [bands,             setBands]             = useState([]);
@@ -200,10 +197,8 @@ export default function App() {
   const [visTime, setVisTime] = useState({ min: 0, max: 10 }); // Default 10s view
 
   const prevFftIdRef  = useRef(null);
-  const [userPanZoom, setUserPanZoom] = useState(false);
   const debounceTimer = useRef(null);
   const requestAbortController = useRef(null);
-  const isInternalUpdate = useRef(false);
 
   /* ── Load modes ── */
   useEffect(() => {
@@ -211,40 +206,17 @@ export default function App() {
   }, []);
 
   /* ── Set freq range when new FFT data arrives ── */
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     if (!fftData?.freqs?.length) return;
     const id = fftData.freqs.length + '_' + fftData.freqs[fftData.freqs.length - 1];
     if (id === prevFftIdRef.current) return;
     prevFftIdRef.current = id;
-
-    // FFT freq arrays can technically start above 0 (e.g. DC removed).
-    // Use the true min/max to ensure pan/zoom operates over the actual data range.
-    const min = Math.min(...fftData.freqs);
     const max = Math.max(...fftData.freqs);
-
-    setFreqRange({ min, max });
-
-    // Only reset view range when the user hasn't manually panned/zoomed.
-    // This prevents pan/zoom being overwritten by repeated FFT updates.
-    if (!userPanZoom) {
-      setVisFreq({ min, max });
-    } else {
-      setVisFreq((current) => {
-        const span = current.max - current.min;
-        const rangeSpan = max - min;
-        if (span >= rangeSpan) return { min, max };
-
-        // Clamp the existing view to the new range.
-        let lo = Math.max(min, Math.min(current.min, max - span));
-        return { min: lo, max: lo + span };
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fftData, userPanZoom]);
+    setFreqRange({ min: 0, max });
+    setVisFreq({ min: 0, max });
+  }, [fftData]);
 
   /* ── Clamp visFreq.min when audiogram toggled ── */
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     if (isAudiogram && visFreq.min < 20) {
       setVisFreq((v) => ({ ...v, min: 20 }));
@@ -252,40 +224,27 @@ export default function App() {
     } else if (!isAudiogram) {
       setFreqRange((r) => ({ ...r, min: 0 }));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAudiogram, visFreq.min]);
+  }, [isAudiogram]);
 
   /* ── Reset time range when new spectrogram arrives ── */
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     if (outputSpectrogram) {
       const totalTime = outputSpectrogram.times[outputSpectrogram.times.length - 1];
       setVisTime({ min: 0, max: totalTime });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [outputSpectrogram]);
 
-  function applyResult(result) {
+  /* ── bandsLoadedFromConfig event ── */
+  useEffect(() => {
+    const handler = (e) => { if (file) processSignalWithBands(e.detail); };
+    window.addEventListener('bandsLoadedFromConfig', handler);
+    return () => window.removeEventListener('bandsLoadedFromConfig', handler);
+  }, [file, currentMode, weights]);
+
+  const applyResult = (result) => {
     setInputSignal(new Float32Array(result.input_audio));
     setOutputSignal(new Float32Array(result.output_audio));
     setSampleRate(result.sample_rate);
-
-    if (result.ai_analysis && currentMode === 'musical') {
-      isInternalUpdate.current = true;
-      
-      setBands(prevBands => prevBands.map(band => {
-        const aiData = result.ai_analysis[band.id];
-        if (aiData) {
-          return {
-            ...band,
-            min_hz: aiData.min_hz, // Overwrite with ground truth
-            max_hz: aiData.max_hz, // Overwrite with ground truth
-            label: `${band.label} `
-          };
-        }
-        return band;
-      }));
-    }
 
     if (currentMode === 'ecg') {
       const analysis = calculateBPM(new Float32Array(result.output_audio), result.sample_rate);
@@ -316,9 +275,9 @@ export default function App() {
     setWaveletConfigUsed(result.wavelet_config_used || null);
 
     setLoading(false);
-  }
+  };
 
-  async function processSignalWithBands(bandsArg) {
+  const processSignalWithBands = async (bandsArg) => {
     try {
       requestAbortController.current?.abort();
       requestAbortController.current = new AbortController();
@@ -346,22 +305,11 @@ export default function App() {
       }
       setLoading(false);
     }
-  }
-
-  /* ── bandsLoadedFromConfig event ── */
-  useEffect(() => {
-    const handler = (e) => { if (file) processSignalWithBands(e.detail); };
-    window.addEventListener('bandsLoadedFromConfig', handler);
-    return () => window.removeEventListener('bandsLoadedFromConfig', handler);
-  }, [file, currentMode, weights]);
+  };
 
   /* ── Debounced processing ── */
   useEffect(() => {
     if (!file) return;
-    if (isInternalUpdate.current) {
-    isInternalUpdate.current = false;
-    return; 
-  }
     const run = async () => {
       try {
         requestAbortController.current?.abort();
@@ -396,7 +344,6 @@ export default function App() {
   }, [file, currentMode, bands, weights, waveletWeights, waveletType, waveletLevels, useAiModel]);
 
   const handleModeChange = (newMode) => {
-    setUserPanZoom(false);
     setCurrentMode(newMode);
     setWeights({});
     setEcgAnalysis({ bpm: null, type: null });
@@ -461,7 +408,7 @@ export default function App() {
 
         <div className="sidebar-upload">
           <span className="sidebar-section-label">Audio Source</span>
-          <FileUploader onFileSelect={handleFileSelect} file={file} />
+          <FileUploader onFileSelect={setFile} file={file} mode={currentMode} />
         </div>
 
         <nav className="sidebar-modes">
@@ -519,7 +466,7 @@ export default function App() {
         )}
 
         {/* No file */}
-        {!file && (
+        {!file && currentMode !== 'ecg' && (
           <div className="section-card">
             <div className="empty-state">
               <div className="empty-icon">
@@ -534,7 +481,7 @@ export default function App() {
         )}
 
         {/* Equalizer bands */}
-        {file && (
+        {file && currentMode !== 'ecg' && (
           <div className="section-card">
             <div className="section-head">
               <div className="section-head-left">
@@ -629,7 +576,7 @@ export default function App() {
         )}
 
         {/* Loading */}
-        {loading && (
+        {loading && currentMode !== 'ecg' && (
           <div className="loading-card">
             <div className="eq-bars">
               {[...Array(7)].map((_, i) => <div key={i} className="eq-bar" />)}
@@ -638,8 +585,11 @@ export default function App() {
           </div>
         )}
 
+        {/* ECG AI Analysis — self-contained when ECG mode active */}
+        {currentMode === 'ecg' && <EcgAnalysis setEcgAnalysis={setEcgAnalysis} />}
+
         {/* Results */}
-        {hasResults && (
+        {hasResults && !isEcg && (
           <>
             {/* Waveforms */}
             <div className="section-card">
@@ -699,10 +649,7 @@ export default function App() {
                   freqMax={freqRange.max}
                   visMin={visFreq.min}
                   visMax={visFreq.max}
-                  onVisChange={(lo, hi) => {
-                    setUserPanZoom(true);
-                    setVisFreq({ min: lo, max: hi });
-                  }}
+                  onVisChange={(lo, hi) => setVisFreq({ min: lo, max: hi })}
                   isAudiogram={isAudiogram}
                   onToggleAudiogram={() => setIsAudiogram((p) => !p)}
                   disableAudiogram={isEcg}
@@ -741,7 +688,7 @@ export default function App() {
                   </button>
                 </div>
               </div>
-              {showSpectrograms && (
+              {showSpectrograms && outputSpectrogram && (
                 <div className="section-body">
                   <TimePanBar
                     timeMin={outputSpectrogram.times[0]}
