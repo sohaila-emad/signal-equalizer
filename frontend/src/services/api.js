@@ -7,6 +7,25 @@
 
 const API_BASE = 'http://127.0.0.1:5000';
 
+export function encodeWavBlob(samples, sampleRate) {
+  const len    = samples.length;
+  const buffer = new ArrayBuffer(44 + len * 2);
+  const view   = new DataView(buffer);
+  const ws     = (off, s) => [...s].forEach((c, i) => view.setUint8(off + i, c.charCodeAt(0)));
+  const clip   = (x) => Math.max(-1, Math.min(1, x));
+  ws(0, 'RIFF'); view.setUint32(4, 36 + len * 2, true);
+  ws(8, 'WAVE'); ws(12, 'fmt ');
+  view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true); ws(36, 'data');
+  view.setUint32(40, len * 2, true);
+  for (let i = 0; i < len; i++) {
+    view.setInt16(44 + i * 2, clip(samples[i]) * 0x7fff, true);
+  }
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
 /**
  * Upload and transform a WAV file with equalizer and wavelet settings.
  * @param {File} file - The WAV file to process
@@ -27,7 +46,8 @@ export async function uploadAndTransform(
   wavelet = null,
   waveletLevels = null,
   useAi = false,
-  abortSignal = null
+  abortSignal = null,
+  aiWeights = {}
 ) {
   const formData = new FormData();
   formData.append('file', file);
@@ -38,6 +58,7 @@ export async function uploadAndTransform(
   }
   formData.append('use_ai', useAi ? '1' : '0');
   formData.append('wavelet_weights', JSON.stringify(waveletWeights || {}));
+  formData.append('ai_weights', JSON.stringify(aiWeights || {}));
   if (mode === 'generic' && wavelet) {
     formData.append('wavelet', wavelet);
   }
@@ -149,7 +170,19 @@ export async function analyzeEcg(heaFile, datFile) {
     const err = await response.json().catch(() => ({ error: 'ECG analysis failed' }));
     throw new Error(err.error || 'ECG analysis failed');
   }
-  return response.json();
+  const data = await response.json();
+
+  // Construct WAV blob from signal_100hz for use with /transform
+  try {
+    const wavBlob = encodeWavBlob(
+      new Float32Array(data.signal_100hz),
+      100
+    );
+    const wavFile = new File([wavBlob], 'ecg_signal.wav', { type: 'audio/wav' });
+    return { ...data, wavFile };
+  } catch (e) {
+    return data;
+  }
 }
 
 /**

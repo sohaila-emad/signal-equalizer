@@ -1,4 +1,5 @@
 import CineViewer from './CineViewer';
+import EcgCineViewer from './EcgCineViewer';
 import './TripleViewers.css';
 
 /**
@@ -13,53 +14,62 @@ export default function TripleViewers({
   showAi,
   sampleRate,
   viewState,    // <--- Use the prop from App.js
-  setViewState  // <--- Use the prop from App.js
+  setViewState, // <--- Use the prop from App.js
+  isEcgMode = false
 }) {
-  
   // This handler ensures that if one viewer changes (zoom/pan/play), 
   // they ALL update simultaneously.
   const handleSharedViewChange = (newView) => {
     setViewState(newView);
   };
 
+  const Viewer = isEcgMode ? EcgCineViewer : CineViewer;
+
   return (
     <div className="triple-viewers-stack">
-      <CineViewer
+      <Viewer
         signal={inputSignal}
         sampleRate={sampleRate}
         viewState={viewState}
         onViewChange={handleSharedViewChange}
-        label="Input Signal"
+        label={isEcgMode ? 'ECG Input' : 'Input Signal'}
       />
-      
-      <CineViewer
+      <Viewer
         signal={fftOutput}
         sampleRate={sampleRate}
         viewState={viewState}
         onViewChange={handleSharedViewChange}
-        label="FFT Output"
+        label={isEcgMode ? 'ECG FFT Output' : 'FFT Output'}
       />
-      
-      {/* Only render Wavelet viewer if the signal exists */}
       {waveletOutput && (
-        <CineViewer
+        <Viewer
           signal={waveletOutput}
           sampleRate={sampleRate}
           viewState={viewState}
           onViewChange={handleSharedViewChange}
-          label="Wavelet Output"
+          label={isEcgMode ? 'ECG Wavelet Output' : 'Wavelet Output'}
         />
       )}
-
-      {/* Only render AI viewer if the signal exists and user enabled it */}
-      {showAi && aiOutput && (
-        <CineViewer
-          signal={aiOutput}
-          sampleRate={sampleRate}
-          viewState={viewState}
-          onViewChange={handleSharedViewChange}
-          label="Musical AI (HTDemucs)"
-        />
+      {aiOutput && (
+        isEcgMode ? (
+          <EcgCineViewer
+            signal={aiOutput}
+            sampleRate={sampleRate}
+            viewState={viewState}
+            onViewChange={handleSharedViewChange}
+            label="ECG AI Output"
+          />
+        ) : (
+          showAi && (
+            <CineViewer
+              signal={aiOutput}
+              sampleRate={sampleRate}
+              viewState={viewState}
+              onViewChange={handleSharedViewChange}
+              label="Musical AI (HTDemucs)"
+            />
+          )
+        )
       )}
     </div>
   );

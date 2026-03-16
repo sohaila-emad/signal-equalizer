@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import './App.css';
 import SliderPanel from './components/Equalizer/SliderPanel';
-import LinkedViewers from './components/Viewers/LinkedViewers';
+// import LinkedViewers from './components/Viewers/LinkedViewers';
 import TripleViewers from './components/Viewers/TripleViewers';
+import EcgCineViewer from './components/Viewers/EcgCineViewer';
 import VoiceSeparation from './components/Separation/VoiceSeparation';
 import EcgAnalysis from './components/ECG/EcgAnalysis';
 // Wavelet dropdown options
@@ -169,10 +170,12 @@ export default function App() {
   const [waveletConfigUsed,  setWaveletConfigUsed]  = useState(null);
   const [outputWavelet,      setOutputWavelet]      = useState(null);
   const [outputAI,           setOutputAI]           = useState(null);
+  const [aiWeights,          setAiWeights]          = useState({});
   const [waveletType,        setWaveletType]        = useState('db4');
   const [waveletLevels,      setWaveletLevels]      = useState(4);
   const [fftBandsOpen,       setFftBandsOpen]       = useState(true);
   const [waveletBandsOpen,   setWaveletBandsOpen]   = useState(true);
+  const [aiBandsOpen,        setAiBandsOpen]        = useState(true);
 
   const [inputSignal,        setInputSignal]        = useState(null);
   const [outputSignal,       setOutputSignal]       = useState(null);
@@ -187,12 +190,13 @@ export default function App() {
   const [isAudiogram,        setIsAudiogram]        = useState(false);
   const [useAiModel,         setUseAiModel]         = useState(false);
   const [ecgAnalysis,        setEcgAnalysis]        = useState({ bpm: null, type: null });
+  // const [ecgWavFile,         setEcgWavFile]         = useState(null);
 
   const [freqRange, setFreqRange] = useState({ min: 0, max: 5000 });
   const [visFreq,   setVisFreq]   = useState({ min: 0, max: 5000 });
 
   // Shared view state for TripleViewers
-  const [viewState, setViewState] = useState({});
+  const [viewState, setViewState] = useState({ offsetSamples: 0, zoom: 1 });
 
   const [visTime, setVisTime] = useState({ min: 0, max: 10 }); // Default 10s view
 
@@ -245,13 +249,8 @@ export default function App() {
     setInputSignal(new Float32Array(result.input_audio));
     setOutputSignal(new Float32Array(result.output_audio));
     setSampleRate(result.sample_rate);
-
-    if (currentMode === 'ecg') {
-      const analysis = calculateBPM(new Float32Array(result.output_audio), result.sample_rate);
-      setEcgAnalysis(analysis || { bpm: null, type: 'Unknown' });
-    } else {
-      setEcgAnalysis({ bpm: null, type: null });
-    }
+    // ECG BPM calculation is performed in EcgAnalysis; clear previous ECG analysis here
+    setEcgAnalysis({ bpm: null, type: null });
 
     setInputSpectrogram({
       freqs: result.spectrogram_input.freqs,
@@ -296,7 +295,8 @@ export default function App() {
         waveletType,
         waveletLevels,
         useAiModel,
-        requestAbortController.current.signal
+        requestAbortController.current.signal,
+        aiWeights
       );
       applyResult(result);
     } catch (err) {
@@ -328,7 +328,8 @@ export default function App() {
           waveletType,
           waveletLevels,
           useAiModel,
-          requestAbortController.current.signal
+          requestAbortController.current.signal,
+          aiWeights
         );
         applyResult(result);
       } catch (err) {
@@ -341,36 +342,42 @@ export default function App() {
     clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(run, useAiModel ? 1500 : 350);
     return () => clearTimeout(debounceTimer.current);
-  }, [file, currentMode, bands, weights, waveletWeights, waveletType, waveletLevels, useAiModel]);
+  }, [file, currentMode, bands, weights, waveletWeights, waveletType, waveletLevels, useAiModel, aiWeights]);
 
   const handleModeChange = (newMode) => {
     setCurrentMode(newMode);
     setWeights({});
+    setAiWeights({});
     setEcgAnalysis({ bpm: null, type: null });
     setWaveletWeights({});
     setOutputAI(null);
     setUseAiModel(false);
 
+    // Clear previous results when switching modes
+    setFile(null);
+    setInputSignal(null);
+    setOutputSignal(null);
+    setOutputWavelet(null);
+    setFftData(null);
+    setInputSpectrogram(null);
+    setOutputSpectrogram(null);
+
     if (newMode === 'ecg') setIsAudiogram(false);
-
-    if (newMode !== 'generic') {
-      setBands(allModes[newMode]?.bands ?? []);
-    } else {
-      setBands([]);
-    }
-
+    if (newMode !== 'generic') setBands(allModes[newMode]?.bands ?? []);
+    else setBands([]);
     if (newMode === 'musical') {
       setVisFreq({ min: 20, max: 20000 });
       setFreqRange({ min: 0, max: 22050 });
     }
-
     const wcfg = allModes[newMode]?.wavelet_config;
-    if (wcfg) {
-      setWaveletType(wcfg.wavelet || 'db4');
-      setWaveletLevels(wcfg.levels || 4);
-    } else {
-      setWaveletType('db4');
-      setWaveletLevels(4);
+    if (wcfg) { setWaveletType(wcfg.wavelet || 'db4'); setWaveletLevels(wcfg.levels || 4); }
+    else { setWaveletType('db4'); setWaveletLevels(4); }
+  };
+
+  const handleEcgAnalysisComplete = (wavFile, suggestedBands) => {
+    setFile(wavFile); // triggers debounced /transform
+    if (Array.isArray(suggestedBands) && suggestedBands.length > 0) {
+      setBands(suggestedBands);
     }
   };
 
@@ -380,7 +387,6 @@ export default function App() {
     downloadWav(outputSignal, sampleRate, newName);
   };
 
-  const isEcg     = currentMode === 'ecg';
   const hasResults = inputSignal && outputSignal && !loading;
 
   /* ── Mode tab list ── */
@@ -481,7 +487,7 @@ export default function App() {
         )}
 
         {/* Equalizer bands */}
-        {file && currentMode !== 'ecg' && (
+        {(file || currentMode === 'ecg') && (
           <div className="section-card">
             <div className="section-head">
               <div className="section-head-left">
@@ -563,6 +569,30 @@ export default function App() {
                   )}
                 </div>
               </div>
+
+              {/* Collapsible AI Bands — ECG only, dynamic ranges from ECGNet Grad-CAM + FFT */}
+              {currentMode === 'ecg' && (
+                <div style={{ marginTop: 12 }}>
+                  <div className="collapsible-panel">
+                    <button type="button" onClick={() => setAiBandsOpen(p => !p)} style={{ fontWeight: 600, marginBottom: 4 }}>
+                      AI Bands — ECGNet (dynamic ranges) {aiBandsOpen ? '▲' : '▼'}
+                    </button>
+                    <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 6 }}>
+                      Ranges computed from Grad-CAM focus regions via FFT.
+                      {!file && <span style={{ marginLeft: 6, color: 'var(--accent)' }}>Run analysis to populate.</span>}
+                    </div>
+                    {aiBandsOpen && (
+                      <SliderPanel
+                        mode="ecg"
+                        bands={bands}
+                        onBandsChange={setBands}
+                        weights={aiWeights}
+                        onWeightsChange={setAiWeights}
+                      />
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -576,7 +606,7 @@ export default function App() {
         )}
 
         {/* Loading */}
-        {loading && currentMode !== 'ecg' && (
+        {loading && (
           <div className="loading-card">
             <div className="eq-bars">
               {[...Array(7)].map((_, i) => <div key={i} className="eq-bar" />)}
@@ -586,10 +616,15 @@ export default function App() {
         )}
 
         {/* ECG AI Analysis — self-contained when ECG mode active */}
-        {currentMode === 'ecg' && <EcgAnalysis setEcgAnalysis={setEcgAnalysis} />}
+        {currentMode === 'ecg' && (
+          <EcgAnalysis
+            setEcgAnalysis={setEcgAnalysis}
+            onAnalysisComplete={handleEcgAnalysisComplete}
+          />
+        )}
 
         {/* Results */}
-        {hasResults && !isEcg && (
+        {hasResults && (
           <>
             {/* Waveforms */}
             <div className="section-card">
@@ -616,20 +651,13 @@ export default function App() {
                   fftOutput={outputSignal}
                   waveletOutput={outputWavelet}
                   aiOutput={outputAI}
-                  showAi={useAiModel}
+                  showAi={currentMode === 'ecg' ? !!outputAI : useAiModel}
                   sampleRate={sampleRate}
                   viewState={viewState}
                   setViewState={setViewState}
+                  isEcgMode={currentMode === 'ecg'}
                 />
-                {isEcg && ecgAnalysis.bpm !== null && (
-                  <div className="ecg-diagnosis-panel">
-                    <h3>ECG Analysis</h3>
-                    <p>Heart Rate: <strong>{ecgAnalysis.bpm} BPM</strong></p>
-                    <span className={`status-tag ${ecgAnalysis.type === 'Normal' ? 'normal' : 'warning'}`}>
-                      {ecgAnalysis.type}
-                    </span>
-                  </div>
-                )}
+                {/* ECG diagnosis panel removed; EcgAnalysis provides its own summary and suggested bands seeds sliders */}
               </div>
             </div>
 
@@ -652,7 +680,7 @@ export default function App() {
                   onVisChange={(lo, hi) => setVisFreq({ min: lo, max: hi })}
                   isAudiogram={isAudiogram}
                   onToggleAudiogram={() => setIsAudiogram((p) => !p)}
-                  disableAudiogram={isEcg}
+                  disableAudiogram={currentMode === 'ecg'}
                 />
                 {fftData && (
                   <FftGraph

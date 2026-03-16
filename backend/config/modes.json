@@ -108,32 +108,23 @@
     }
   },
   "ecg": {
-    "label": "ECG AI Classifier",
-    "description": "Upload a WFDB ECG record (.hea + .dat) to classify arrhythmias with ECGNet and visualize Grad-CAM attention.",
-    "bands": [],
-    "wavelet_config": {
-      "wavelet": "db4",
-      "levels": 4,
-      "band_labels": {}
-    }
-  },
-  "ecg_abnormalities": {
-    "label": "Clinical ECG Simulator",
-    "description": "Morphology-based pathology simulation (LVH, BBB, and ST-Depression).",
+    "label": "ECG",
+    "description": "Upload WFDB ECG record. ECGNet classifies arrhythmia, Grad-CAM highlights ROI, sliders control frequency components.",
     "bands": [
-      { "id": "lvh", "label": "LVH (Voltage Height)", "min": 0, "max": 2, "step": 0.1, "default": 0 },
-      { "id": "bbb", "label": "BBB (QRS Width)", "min": 0, "max": 2, "step": 0.1, "default": 0 },
-      { "id": "st_dep", "label": "ST-Depression", "min": 0, "max": 2, "step": 0.1, "default": 0 }
+      { "id": "norm", "label": "NORM",  "min_hz": 0.05, "max_hz": 0.5  },
+      { "id": "mi",   "label": "MI",    "min_hz": 0.5,  "max_hz": 20.0 },
+      { "id": "sttc", "label": "STTC",  "min_hz": 0.5,  "max_hz": 40.0 },
+      { "id": "cd",   "label": "CD",    "min_hz": 5.0,  "max_hz": 40.0 }
     ],
     "wavelet_config": {
       "wavelet": "db4",
       "levels": 4,
       "band_labels": {
-        "level_1": "Muscle Noise/High Freq",
-        "level_2": "QRS Complex (High energy)",
-        "level_3": "P & T Waves (Low energy)",
-        "level_4": "Baseline Wander (Respiration)",
-        "approx": "DC Offset/Sub-0.5Hz"
+        "level_1": "CD Range (High Freq)",
+        "level_2": "MI/STTC/CD (QRS)",
+        "level_3": "MI/STTC (ST-T)",
+        "level_4": "NORM (Baseline)",
+        "approx": "DC Component"
       }
     }
   },

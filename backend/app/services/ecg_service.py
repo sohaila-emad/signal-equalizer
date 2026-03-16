@@ -202,6 +202,51 @@ def run_gradcam(model: torch.nn.Module, signal_tensor: torch.Tensor) -> np.ndarr
         bwd_handle.remove()
 
 
+LITERATURE_BANDS = {
+    'norm': {'id': 'norm', 'label': 'NORM', 'min_hz': 0.05, 'max_hz': 0.5},
+    'mi':   {'id': 'mi',   'label': 'MI',   'min_hz': 0.5,  'max_hz': 20.0},
+    'sttc': {'id': 'sttc', 'label': 'STTC', 'min_hz': 0.5,  'max_hz': 40.0},
+    'cd':   {'id': 'cd',   'label': 'CD',   'min_hz': 5.0,  'max_hz': 40.0},
+}
+
+CLASS_KEYS = ['norm', 'mi', 'sttc', 'cd']
+
+
+def compute_suggested_bands(signal, gradcam, predicted_class_idx, sample_rate=100.0, threshold=0.5):
+    bands = [dict(LITERATURE_BANDS[k]) for k in CLASS_KEYS]
+
+    try:
+        roi_mask = gradcam >= threshold
+    except Exception:
+        roi_mask = np.array([False] * len(gradcam))
+
+    roi_samples = signal[roi_mask] if roi_mask.sum() > 10 else signal
+
+    if len(roi_samples) < 4:
+        return bands
+
+    fft_mag = np.abs(np.fft.rfft(roi_samples))
+    fft_freqs = np.fft.rfftfreq(len(roi_samples), d=1.0 / sample_rate)
+
+    cumulative_energy = np.cumsum(fft_mag ** 2)
+    total_energy = cumulative_energy[-1]
+    if total_energy > 1e-10:
+        low_idx = np.searchsorted(cumulative_energy, total_energy * 0.1)
+        high_idx = np.searchsorted(cumulative_energy, total_energy * 0.9)
+        min_hz = float(np.clip(fft_freqs[low_idx], 0.05, sample_rate / 2))
+        high_idx = min(high_idx, len(fft_freqs) - 1)
+        max_hz = float(np.clip(fft_freqs[high_idx], min_hz + 0.5, sample_rate / 2))
+
+        winning_key = CLASS_KEYS[predicted_class_idx]
+        for band in bands:
+            if band['id'] == winning_key:
+                band['min_hz'] = round(min_hz, 2)
+                band['max_hz'] = round(max_hz, 2)
+                break
+
+    return bands
+
+
 def analyze_ecg(hea_bytes: bytes, dat_bytes: bytes) -> dict:
     """
     Returns:
@@ -245,6 +290,18 @@ def analyze_ecg(hea_bytes: bytes, dat_bytes: bytes) -> dict:
     for i, name in enumerate(LEAD_NAMES):
         leads[name] = signal[i].tolist()
 
+    # Compute suggested bands from Grad-CAM ROI + FFT (uses Lead II at index 1)
+    try:
+        suggested_bands = compute_suggested_bands(
+            signal=signal[1],
+            gradcam=gradcam,
+            predicted_class_idx=pred_class_idx,
+            sample_rate=100.0,
+        )
+    except Exception as _e:
+        print('Failed to compute suggested_bands:', _e)
+        suggested_bands = [dict(x) for x in LITERATURE_BANDS.values()][:4]
+
     return {
         "predicted_class": pred_class_name,
         "class_index": pred_class_idx,
@@ -252,4 +309,6 @@ def analyze_ecg(hea_bytes: bytes, dat_bytes: bytes) -> dict:
         "gradcam": gradcam.tolist(),
         "leads": leads,
         "sample_rate": 100,
+        "suggested_bands": suggested_bands,
+        "signal_100hz": signal[1].tolist(),
     }

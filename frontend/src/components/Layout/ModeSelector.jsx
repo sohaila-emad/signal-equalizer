@@ -13,3 +13,4 @@ export default function ModeSelector({ value, onChange, modes = {} }) {
     </div>
   );
 }
+// (file deleted)

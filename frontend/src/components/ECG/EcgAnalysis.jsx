@@ -11,7 +11,7 @@ const CLASS_COLORS = {
   CD:   '#2196f3',
 };
 
-export default function EcgAnalysis({ setEcgAnalysis }) {
+export default function EcgAnalysis({ setEcgAnalysis, onAnalysisComplete }) {
   const [heaFile,      setHeaFile]      = useState(null);
   const [datFile,      setDatFile]      = useState(null);
   const [result,       setResult]       = useState(null);
@@ -92,7 +92,6 @@ export default function EcgAnalysis({ setEcgAnalysis }) {
 
   /* ── Handlers ── */
   const handleAnalyze = async () => {
-    console.log('Analyze clicked, heaFile:', heaFile, 'datFile:', datFile);
     if (!heaFile || !datFile) return;
     if (!heaFile.name.endsWith('.hea')) {
       setError('First file must be a .hea file');
@@ -107,9 +106,14 @@ export default function EcgAnalysis({ setEcgAnalysis }) {
     setResult(null);
     try {
       const data = await analyzeEcg(heaFile, datFile);
-      console.log('API response:', data);
       setResult(data);
-      console.log('Result state set (staged):', data);
+      if (onAnalysisComplete) {
+        try {
+          onAnalysisComplete(data.wavFile, data.suggested_bands);
+        } catch (e) {
+          // Swallow error
+        }
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -118,7 +122,6 @@ export default function EcgAnalysis({ setEcgAnalysis }) {
   };
 
   useEffect(() => {
-    console.log('Result state updated:', result);
     if (!result) {
       if (typeof setEcgAnalysis === 'function') setEcgAnalysis({ bpm: null, type: null });
       return;
@@ -133,7 +136,6 @@ export default function EcgAnalysis({ setEcgAnalysis }) {
         setEcgAnalysis(analysis || { bpm: null, type: null });
       }
     } catch (e) {
-      console.warn('Failed to compute BPM from result:', e);
       if (typeof setEcgAnalysis === 'function') setEcgAnalysis({ bpm: null, type: null });
     }
   }, [result, selectedLead]);

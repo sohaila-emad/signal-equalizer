@@ -1,8 +1,8 @@
 import { useState } from 'react';
 
 export default function FileUploader({ onFileSelect, file, mode }) {
-  if (mode === 'ecg') return null;
-  const [dragging, setDragging] = useState(false);
+  const [dragging, setDragging] = useState(false); // hook must be first
+  if (mode === 'ecg') return null; // conditional return after hook
 
   const handleChange = (e) => {
     const f = e.target.files?.[0];

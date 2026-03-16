@@ -1,69 +1,66 @@
 import { useEffect, useRef, useState } from 'react';
 
 /**
- * CineViewer - Reusable canvas waveform viewer with playback controls
- * 
+ * EcgCineViewer - Specialized CineViewer for ECG signals (not audio)
+ * - Handles playback and navigation for ECG data, not sound.
+ * - UI and controls match CineViewer for consistency.
+ *
  * Props:
  * - signal: Float32Array of samples
- * - sampleRate: Sample rate in Hz
+ * - sampleRate: Sample rate in Hz (for time axis, not audio)
  * - label: Display label
  * - viewState: { offsetSamples, zoom }
  * - onViewChange: Callback when view changes
  */
-export default function CineViewer({ signal, sampleRate, label, viewState, onViewChange }) {
-  const canvasRef = useRef(null);
-  const audioCtxRef = useRef(null);
-  const sourceRef = useRef(null);
-  const rafRef = useRef(0);
-  const startTimeRef = useRef(0);
-  const startOffsetRef = useRef(0);
 
+export default function EcgCineViewer({ signal, sampleRate, label, viewState, onViewChange }) {
+  const canvasRef = useRef(null);
+  const rafRef = useRef(0);
+  const playStartRef = useRef(0);
+  const playOffsetRef = useRef(0);
+  const isPlayingRef = useRef(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const playbackSpeedRef = useRef(1);
+
+  // Keep playbackSpeedRef in sync with state
+  useEffect(() => {
+    playbackSpeedRef.current = playbackSpeed;
+  }, [playbackSpeed]);
 
   const { offsetSamples = 0, zoom = 1 } = viewState || {};
-
-  // Calculate window size based on zoom
-  const baseWindowSize = 12000; // Increased for higher res
+  // Show ~2.5 seconds worth of samples by default, regardless of total length
+  const defaultWindowSamples = Math.round(sampleRate * 2.5);
+  const baseWindowSize = signal ? Math.min(defaultWindowSamples, signal.length) : 250;
   const windowSize = Math.floor(baseWindowSize / zoom);
 
   // Draw waveform
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !signal || signal.length === 0) return;
-
     const ctx = canvas.getContext('2d');
-
     const draw = () => {
       const parentWidth = canvas.parentElement?.clientWidth || 1200;
       const height = 240;
       const dpr = window.devicePixelRatio || 1;
       const width = Math.floor(parentWidth);
-
-      // Resize canvas to match parent width (responsive) while using device pixel ratio for sharpness.
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
       canvas.width = Math.floor(width * dpr);
       canvas.height = Math.floor(height * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
       ctx.clearRect(0, 0, width, height);
       ctx.fillStyle = '#020617';
       ctx.fillRect(0, 0, width, height);
-
-      // Clamp offset to valid range so the window stays constant size
       const maxStart = Math.max(0, signal.length - windowSize);
       const start = Math.max(0, Math.min(offsetSamples, maxStart));
       const end = Math.min(signal.length, start + windowSize);
       const view = signal.slice(start, end);
-
       const viewLen = view.length;
       if (viewLen > 0) {
         const midY = height / 2;
         const amp = midY * 0.9;
-        // Use the constant windowSize for scaling so slices shorter at the end don't stretch
         const xScale = width / Math.max(1, windowSize - 1);
-
         ctx.strokeStyle = '#22c55e';
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -76,8 +73,6 @@ export default function CineViewer({ signal, sampleRate, label, viewState, onVie
         }
         ctx.stroke();
       }
-
-      // Draw playhead
       ctx.strokeStyle = '#ef4444';
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -85,13 +80,8 @@ export default function CineViewer({ signal, sampleRate, label, viewState, onVie
       ctx.lineTo(width / 2, height);
       ctx.stroke();
     };
-
     draw();
-
-    const handleResize = () => {
-      draw();
-    };
-
+    const handleResize = () => { draw(); };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [signal, offsetSamples, windowSize]);
@@ -99,121 +89,67 @@ export default function CineViewer({ signal, sampleRate, label, viewState, onVie
   const stopPlayback = () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = 0;
-    if (sourceRef.current) {
-      try {
-        sourceRef.current.stop();
-      } catch {
-        // ignore
-      }
-      sourceRef.current = null;
-    }
     setIsPlaying(false);
+    isPlayingRef.current = false;
+    // Update playOffsetRef so resume works from the right place
+    playOffsetRef.current = offsetSamples;
   };
 
-  // Utility: simple linear resample for 1D Float32Array
-  function resampleArray(input, inputRate, outputRate) {
-    if (inputRate === outputRate) return input;
-    const ratio = outputRate / inputRate;
-    const newLength = Math.round(input.length * ratio);
-    const output = new Float32Array(newLength);
-    for (let i = 0; i < newLength; i++) {
-      const srcIdx = i / ratio;
-      const idx0 = Math.floor(srcIdx);
-      const idx1 = Math.min(idx0 + 1, input.length - 1);
-      const frac = srcIdx - idx0;
-      output[i] = input[idx0] * (1 - frac) + input[idx1] * frac;
-    }
-    return output;
-  }
-
+  // ECG playback: animate playhead visually, not audio
   const play = () => {
     if (!signal || signal.length === 0) return;
-
-    if (!audioCtxRef.current) {
-      audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    const ctx = audioCtxRef.current;
-
+    // Prevent multiple playbacks
     stopPlayback();
-
-    let playbackSignal = signal;
-    let playbackRate = sampleRate;
-    // Web Audio API only supports 3000-768000 Hz
-    if (sampleRate < 3000) {
-      playbackRate = 8000;
-      playbackSignal = resampleArray(signal, sampleRate, playbackRate);
-    }
-
-    const buffer = ctx.createBuffer(1, playbackSignal.length, playbackRate);
-    buffer.getChannelData(0).set(playbackSignal);
-
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.playbackRate.value = playbackSpeed;
-    source.connect(ctx.destination);
-
-    // Offset must be in seconds, so recalc for upsampled playback
-    let clampedOffset = Math.max(0, Math.min(offsetSamples, signal.length - 1));
-    let offsetSec = clampedOffset / sampleRate;
-    if (sampleRate < 3000) {
-      // Map offset to upsampled array
-      offsetSec = clampedOffset / sampleRate;
-    }
-
-    source.start(0, offsetSec);
-    sourceRef.current = source;
-    startTimeRef.current = ctx.currentTime;
-    startOffsetRef.current = clampedOffset;
     setIsPlaying(true);
-
-    source.onended = () => {
-      setIsPlaying(false);
-      sourceRef.current = null;
-    };
-    // Progress updater for playhead
-    const updateProgress = () => {
-      if (!sourceRef.current) return;
-      const elapsed = (audioCtxRef.current.currentTime - startTimeRef.current) * playbackSpeed;
-      const currentSample = Math.floor(startOffsetRef.current + elapsed * sampleRate);
-      if (currentSample < signal.length) {
-        onViewChange({ offsetSamples: currentSample, zoom });
-        rafRef.current = requestAnimationFrame(updateProgress);
-      } else {
+    isPlayingRef.current = true;
+    playStartRef.current = performance.now();
+    // Always start from the current offset
+    playOffsetRef.current = offsetSamples;
+    const animate = () => {
+      if (!isPlayingRef.current) return;
+      const elapsed = (performance.now() - playStartRef.current) / 1000 * playbackSpeedRef.current;
+      let currentSample = Math.floor(playOffsetRef.current + elapsed * sampleRate);
+      if (currentSample >= signal.length) {
+        currentSample = signal.length - 1;
         setIsPlaying(false);
-        sourceRef.current = null;
-        // Keep the view at the end of the signal instead of resetting to start.
-        onViewChange({ offsetSamples: Math.max(0, signal.length - 1), zoom });
+        isPlayingRef.current = false;
+        // Snap window to end
+        onViewChange({ offsetSamples: Math.max(0, signal.length - windowSize), zoom });
+        return;
       }
+      // Center window on playhead
+      const halfWindow = Math.floor(windowSize / 2);
+      const newOffset = Math.max(0, Math.min(currentSample - halfWindow, Math.max(0, signal.length - windowSize)));
+      onViewChange({ offsetSamples: newOffset, zoom });
+      rafRef.current = requestAnimationFrame(animate);
     };
-    rafRef.current = requestAnimationFrame(updateProgress);
+    rafRef.current = requestAnimationFrame(animate);
   };
 
   const handleZoomIn = () => {
-    const minZoom = Math.min(1, baseWindowSize / Math.max(1, signal?.length || 1));
+    // minZoom = show entire signal at once
+    const minZoom = baseWindowSize / Math.max(1, signal?.length || baseWindowSize);
     const maxZoom = 100;
     const newZoom = Math.min(maxZoom, zoom * 2);
     onViewChange({ offsetSamples, zoom: Math.max(minZoom, newZoom) });
   };
-
   const handleZoomOut = () => {
-    const minZoom = Math.min(1, baseWindowSize / Math.max(1, signal?.length || 1));
+    // minZoom = show entire signal at once
+    const minZoom = baseWindowSize / Math.max(1, signal?.length || baseWindowSize);
     const newZoom = zoom / 2;
     onViewChange({ offsetSamples, zoom: Math.max(minZoom, newZoom) });
   };
-
   const handlePanLeft = () => {
     const step = Math.max(1, Math.floor(Math.min(windowSize, signal?.length || windowSize) * 0.1));
     const newOffset = Math.max(0, offsetSamples - step);
     onViewChange({ offsetSamples: newOffset, zoom });
   };
-
   const handlePanRight = () => {
     const step = Math.max(1, Math.floor(Math.min(windowSize, signal?.length || windowSize) * 0.1));
     const maxOffset = signal ? Math.max(0, signal.length - windowSize) : 0;
     const newOffset = Math.min(maxOffset, offsetSamples + step);
     onViewChange({ offsetSamples: newOffset, zoom });
   };
-
   const handleReset = () => {
     stopPlayback();
     onViewChange({ offsetSamples: 0, zoom: 1 });
@@ -235,7 +171,17 @@ export default function CineViewer({ signal, sampleRate, label, viewState, onVie
         </button>
         <label>
           Speed:
-          <select value={playbackSpeed} onChange={(e) => setPlaybackSpeed(parseFloat(e.target.value))}>
+          <select
+            value={playbackSpeed}
+            onChange={e => {
+              const val = parseFloat(e.target.value);
+              setPlaybackSpeed(val);
+              playbackSpeedRef.current = val;
+              // Reset play start so speed change is immediate
+              playStartRef.current = performance.now();
+              playOffsetRef.current = offsetSamples;
+            }}
+          >
             <option value="0.25">0.25x</option>
             <option value="0.5">0.5x</option>
             <option value="1">1x</option>
