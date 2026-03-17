@@ -103,28 +103,6 @@ def preprocess_wfdb(hea_bytes: bytes, dat_bytes: bytes) -> np.ndarray:
         pad = np.zeros((12, target - num_samples), dtype=np.float32)
         signal = np.concatenate([signal, pad], axis=1)
 
-    # Debug prints
-    try:
-        print(f"Signal shape from wfdb: {raw_signal.shape}")
-        print(f"Signal dtype: {raw_signal.dtype}")
-        print(f"Signal min: {raw_signal.min():.4f}, max: {raw_signal.max():.4f}, mean: {raw_signal.mean():.4f}")
-    except Exception as _e:
-        print('Failed to print raw signal stats:', _e)
-
-    try:
-        # meta may be a dict-like returned by wfdb.rdsamp
-        sig_names = meta.get('sig_name') if isinstance(meta, dict) else getattr(meta, 'sig_name', None)
-        fs = meta.get('fs') if isinstance(meta, dict) else getattr(meta, 'fs', None)
-        print(f"Record fields: {sig_names}")
-        print(f"Sampling rate: {fs}")
-    except Exception as _e:
-        print('Failed to print meta fields:', _e)
-
-    try:
-        print(f"After transpose shape: {signal.T.shape if hasattr(signal, 'T') else 'N/A'}")
-    except Exception as _e:
-        print('Failed to print transpose shape:', _e)
-
     return signal  # (12, 1000)
 
 
@@ -247,6 +225,89 @@ def compute_suggested_bands(signal, gradcam, predicted_class_idx, sample_rate=10
     return bands
 
 
+def compute_suggested_wavelet_levels(
+    signal: np.ndarray,
+    gradcam: np.ndarray,
+    wavelet: str = 'db4',
+    levels: int = 4,
+    threshold: float = 0.5,
+) -> dict:
+    """
+    Maps Grad-CAM attention regions to wavelet decomposition levels.
+
+    Finds which wavelet levels have the highest energy concentration
+    inside the Grad-CAM highlighted region (values >= threshold).
+    Returns suggested slider weights per level (0.5 to 2.0 range).
+
+    This is more meaningful than FFT-based bands because:
+    - Grad-CAM gives time-localized attention
+    - Wavelets preserve time-frequency localization at each level
+    - FFT would lose the time context Grad-CAM provides
+    """
+    import pywt
+
+    signal = np.asarray(signal)
+    gradcam = np.asarray(gradcam)
+
+    # Clamp levels to valid range
+    max_level = pywt.dwt_max_level(len(signal), pywt.Wavelet(wavelet).dec_len)
+    levels = min(levels, max_level)
+    if levels < 1:
+        levels = 1
+
+    # Get ROI mask from Grad-CAM
+    roi_mask = gradcam >= threshold
+    if roi_mask.sum() < 5:
+        # Fallback: use top 20% of attention if threshold yields too few samples
+        roi_mask = gradcam >= np.percentile(gradcam, 80)
+
+    # Decompose signal into wavelet levels
+    # coeffs[0] = cA_n (approx), coeffs[1] = cD_n, ..., coeffs[-1] = cD_1
+    coeffs = pywt.wavedec(signal, wavelet, level=levels)
+
+    level_energies = {}
+
+    for i, coeff_arr in enumerate(coeffs):
+        coeff_len = len(coeff_arr)
+        if coeff_len == 0:
+            continue
+
+        # Downsample ROI mask to match this level's coefficient count
+        # using linear interpolation of indices
+        indices = np.linspace(0, len(roi_mask) - 1, coeff_len).astype(int)
+        roi_at_level = roi_mask[indices]
+
+        # Compute energy ratio: ROI energy / total energy at this level
+        total_energy = float(np.sum(coeff_arr ** 2)) + 1e-10
+        roi_energy = float(np.sum(coeff_arr[roi_at_level] ** 2))
+        ratio = roi_energy / total_energy
+
+        if i == 0:
+            level_energies['approx'] = ratio
+        else:
+            # coeffs[1] = highest level detail (level_N), coeffs[-1] = level_1
+            level_id = f'level_{levels - i + 1}'
+            level_energies[level_id] = ratio
+
+    if not level_energies:
+        return {}
+
+    # Normalize to slider range 0.5-2.0
+    # Level with highest ROI energy concentration gets weight 2.0
+    # Level with lowest gets weight 0.5
+    max_energy = max(level_energies.values()) or 1.0
+    min_energy = min(level_energies.values()) or 0.0
+    energy_range = max_energy - min_energy or 1.0
+
+    suggested_weights = {}
+    for level_id, energy in level_energies.items():
+        normalized = (energy - min_energy) / energy_range  # 0 to 1
+        weight = round(0.5 + normalized * 1.5, 2)  # 0.5 to 2.0
+        suggested_weights[level_id] = weight
+
+    return suggested_weights
+
+
 def analyze_ecg(hea_bytes: bytes, dat_bytes: bytes) -> dict:
     """
     Returns:
@@ -302,6 +363,32 @@ def analyze_ecg(hea_bytes: bytes, dat_bytes: bytes) -> dict:
         print('Failed to compute suggested_bands:', _e)
         suggested_bands = [dict(x) for x in LITERATURE_BANDS.values()][:4]
 
+    # Compute wavelet-based suggested weights using Grad-CAM ROI
+    # Use the same wavelet config as the mode
+    mode_cfg = {}
+    try:
+        # Try to get wavelet config from modes - use db4/4 as fallback
+        from pathlib import Path as _Path
+        import json as _json
+        _modes_path = _Path(__file__).parent.parent.parent / 'config' / 'modes.json'
+        if _modes_path.exists():
+            with _modes_path.open() as _f:
+                _modes = _json.load(_f)
+            mode_cfg = _modes.get('ecg', {}).get('wavelet_config', {})
+    except Exception:
+        pass
+
+    _wavelet = mode_cfg.get('wavelet', 'db4')
+    _levels = int(mode_cfg.get('levels', 4))
+
+    suggested_wavelet_weights = compute_suggested_wavelet_levels(
+        signal=signal[1],  # Lead II, shape (1000,)
+        gradcam=gradcam,
+        wavelet=_wavelet,
+        levels=_levels,
+        threshold=0.5,
+    )
+
     return {
         "predicted_class": pred_class_name,
         "class_index": pred_class_idx,
@@ -310,5 +397,6 @@ def analyze_ecg(hea_bytes: bytes, dat_bytes: bytes) -> dict:
         "leads": leads,
         "sample_rate": 100,
         "suggested_bands": suggested_bands,
+        "suggested_wavelet_weights": suggested_wavelet_weights,
         "signal_100hz": signal[1].tolist(),
     }

@@ -120,11 +120,11 @@
       "wavelet": "db4",
       "levels": 4,
       "band_labels": {
-        "level_1": "CD Range (High Freq)",
-        "level_2": "MI/STTC/CD (QRS)",
-        "level_3": "MI/STTC (ST-T)",
-        "level_4": "NORM (Baseline)",
-        "approx": "DC Component"
+        "level_1": "NORM - R-Peak (Sharp Transient, 12-25Hz)",
+        "level_2": "CD - QRS Width (Mid Transient, 6-12Hz)",
+        "level_3": "STTC - ST Segment (Slow, 3-6Hz)",
+        "level_4": "MI - ST Elevation / T-Wave (1.5-3Hz)",
+        "approx": "MI - Structural Shift / DC Offset (<1.5Hz)"
       }
     }
   },

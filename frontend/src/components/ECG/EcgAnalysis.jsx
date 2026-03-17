@@ -109,7 +109,7 @@ export default function EcgAnalysis({ setEcgAnalysis, onAnalysisComplete }) {
       setResult(data);
       if (onAnalysisComplete) {
         try {
-          onAnalysisComplete(data.wavFile, data.suggested_bands);
+          onAnalysisComplete(data.wavFile, data.suggested_bands, data.suggested_wavelet_weights);
         } catch (e) {
           // Swallow error
         }

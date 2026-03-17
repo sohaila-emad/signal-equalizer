@@ -171,12 +171,10 @@ export default function App() {
   const [waveletConfigUsed,  setWaveletConfigUsed]  = useState(null);
   const [outputWavelet,      setOutputWavelet]      = useState(null);
   const [outputAI,           setOutputAI]           = useState(null);
-  const [aiWeights,          setAiWeights]          = useState({});
   const [waveletType,        setWaveletType]        = useState('db4');
   const [waveletLevels,      setWaveletLevels]      = useState(4);
   const [fftBandsOpen,       setFftBandsOpen]       = useState(true);
   const [waveletBandsOpen,   setWaveletBandsOpen]   = useState(true);
-  const [aiBandsOpen,        setAiBandsOpen]        = useState(true);
 
   const [inputSignal,        setInputSignal]        = useState(null);
   const [outputSignal,       setOutputSignal]       = useState(null);
@@ -272,12 +270,6 @@ if (result.ai_analysis && currentMode === 'musical') {
       return band;
     }));
     }
-    if (currentMode === 'ecg') {
-      const analysis = calculateBPM(new Float32Array(result.output_audio), result.sample_rate);
-      setEcgAnalysis(analysis || { bpm: null, type: 'Unknown' });
-    } else {
-      setEcgAnalysis({ bpm: null, type: null });
-    }
 
     setInputSpectrogram({
       freqs: result.spectrogram_input.freqs,
@@ -322,8 +314,7 @@ if (result.ai_analysis && currentMode === 'musical') {
         waveletType,
         waveletLevels,
         useAiModel,
-        requestAbortController.current.signal,
-        aiWeights
+        requestAbortController.current.signal
       );
       applyResult(result);
     } catch (err) {
@@ -359,8 +350,7 @@ if (result.ai_analysis && currentMode === 'musical') {
           waveletType,
           waveletLevels,
           useAiModel,
-          requestAbortController.current.signal,
-          aiWeights
+          requestAbortController.current.signal
         );
         applyResult(result);
       } catch (err) {
@@ -373,12 +363,11 @@ if (result.ai_analysis && currentMode === 'musical') {
     clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(run, useAiModel ? 1500 : 350);
     return () => clearTimeout(debounceTimer.current);
-  }, [file, currentMode, bands, weights, waveletWeights, waveletType, waveletLevels, useAiModel, aiWeights]);
+  }, [file, currentMode, bands, weights, waveletWeights, waveletType, waveletLevels, useAiModel]);
 
   const handleModeChange = (newMode) => {
     setCurrentMode(newMode);
     setWeights({});
-    setAiWeights({});
     setEcgAnalysis({ bpm: null, type: null });
     setWaveletWeights({});
     setOutputAI(null);
@@ -405,10 +394,13 @@ if (result.ai_analysis && currentMode === 'musical') {
     else { setWaveletType('db4'); setWaveletLevels(4); }
   };
 
-  const handleEcgAnalysisComplete = (wavFile, suggestedBands) => {
+  const handleEcgAnalysisComplete = (wavFile, suggestedBands, suggestedWaveletWeights) => {
     setFile(wavFile); // triggers debounced /transform
     if (Array.isArray(suggestedBands) && suggestedBands.length > 0) {
       setBands(suggestedBands);
+    }
+    if (suggestedWaveletWeights && typeof suggestedWaveletWeights === 'object') {
+      setWaveletWeights(suggestedWaveletWeights);
     }
   };
 
@@ -602,29 +594,7 @@ if (result.ai_analysis && currentMode === 'musical') {
                 </div>
               </div>
 
-              {/* Collapsible AI Bands — ECG only, dynamic ranges from ECGNet Grad-CAM + FFT */}
-              {currentMode === 'ecg' && (
-                <div style={{ marginTop: 12 }}>
-                  <div className="collapsible-panel">
-                    <button type="button" onClick={() => setAiBandsOpen(p => !p)} style={{ fontWeight: 600, marginBottom: 4 }}>
-                      AI Bands — ECGNet (dynamic ranges) {aiBandsOpen ? '▲' : '▼'}
-                    </button>
-                    <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 6 }}>
-                      Ranges computed from Grad-CAM focus regions via FFT.
-                      {!file && <span style={{ marginLeft: 6, color: 'var(--accent)' }}>Run analysis to populate.</span>}
-                    </div>
-                    {aiBandsOpen && (
-                      <SliderPanel
-                        mode="ecg"
-                        bands={bands}
-                        onBandsChange={setBands}
-                        weights={aiWeights}
-                        onWeightsChange={setAiWeights}
-                      />
-                    )}
-                  </div>
-                </div>
-              )}
+
             </div>
           </div>
         )}

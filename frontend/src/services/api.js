@@ -46,8 +46,7 @@ export async function uploadAndTransform(
   wavelet = null,
   waveletLevels = null,
   useAi = false,
-  abortSignal = null,
-  aiWeights = {}
+  abortSignal = null
 ) {
   const formData = new FormData();
   formData.append('file', file);
@@ -58,7 +57,6 @@ export async function uploadAndTransform(
   }
   formData.append('use_ai', useAi ? '1' : '0');
   formData.append('wavelet_weights', JSON.stringify(waveletWeights || {}));
-  formData.append('ai_weights', JSON.stringify(aiWeights || {}));
   if (mode === 'generic' && wavelet) {
     formData.append('wavelet', wavelet);
   }

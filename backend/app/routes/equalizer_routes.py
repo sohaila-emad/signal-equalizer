@@ -258,27 +258,9 @@ def register_routes(app: Flask) -> None:
 
             y_eq = apply_equalizer(y, float(sr), bands, weights)
 
-            # ECG AI output: apply equalizer using AI-suggested bands + user's AI slider weights
-            if mode == 'ecg':
-                try:
-                    bands_raw = request.form.get("bands")
-                    ai_bands = json.loads(bands_raw) if bands_raw else bands
-                    if ai_bands:
-                        ai_weights_raw = request.form.get("ai_weights")
-                        if ai_weights_raw:
-                            ai_weights = json.loads(ai_weights_raw)
-                        else:
-                            # Default: uniform gain=1 so the signal always shows
-                            ai_weights = {b['id']: 1.0 for b in ai_bands}
-                        y_ai = apply_equalizer(y, float(sr), ai_bands, ai_weights)
-                except Exception as _ecg_ai_err:
-                    print(f"[ECG AI output] failed: {_ecg_ai_err}")
-                    y_ai = None
-
             if mode == "musical" and use_ai:
                 try:
                     from app.services.music_model import process_from_array
-                    # UPDATED: Now receives both the audio and the analysis dict
                     y_ai, ai_analysis = process_from_array(y.astype(np.float32), int(sr), weights)
                 except Exception as e:
                     print(f"[musical AI] failed: {e} — using equalizer output")
