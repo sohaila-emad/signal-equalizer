@@ -251,7 +251,10 @@ def register_routes(app: Flask) -> None:
                     bands = json.loads(bands_raw)
             else:
                 mode_cfg = modes_config.get(mode, {})
-                bands = mode_cfg.get("bands", [])
+                if mode == "musical" and use_ai:
+                    bands = mode_cfg.get("ai_bands", mode_cfg.get("bands", []))
+                else:
+                    bands = mode_cfg.get("bands", [])
 
             y_ai = None
             ai_analysis = None  # <--- New variable to hold the Ground Truth data
@@ -277,11 +280,13 @@ def register_routes(app: Flask) -> None:
             if mode == "generic":
                 wavelet = request.form.get("wavelet", "db4")
                 wavelet_levels = int(request.form.get("wavelet_levels", 4))
+                wavelet_band_labels = {}
             else:
                 mode_cfg = modes_config.get(mode, {})
                 w_cfg = mode_cfg.get("wavelet_config", {"wavelet": "db4", "levels": 4})
                 wavelet = w_cfg.get("wavelet", "db4")
                 wavelet_levels = int(w_cfg.get("levels", 4))
+                wavelet_band_labels = w_cfg.get("band_labels", {})
 
             # For musical mode, apply wavelet on the processed musical path:
             # AI output when available, otherwise FFT-equalized output.
@@ -299,7 +304,12 @@ def register_routes(app: Flask) -> None:
                 ai_f, ai_t, ai_S = compute_spectrogram(y_ai, float(sr))
             freq_axis, input_mag = compute_fft_magnitude(y, float(sr))
             _, output_mag = compute_fft_magnitude(y_eq, float(sr))
-            wavelet_level_bands = compute_wavelet_level_ranges(float(sr), wavelet, wavelet_levels)
+            wavelet_level_bands = compute_wavelet_level_ranges(
+                float(sr),
+                wavelet,
+                wavelet_levels,
+                wavelet_band_labels,
+            )
 
             # 5. Build Response
             max_audio_samples = 100_000

@@ -159,6 +159,19 @@ function TimePanBar({ timeMin, timeMax, visMin, visMax, onVisChange }) {
 
 export default function App() {
 
+  const cloneBands = (sourceBands = []) => sourceBands.map((band) => ({
+    ...band,
+    ranges: band.ranges?.map((range) => ({ ...range })),
+  }));
+
+  const getModeBands = (modeName, aiEnabled = false) => {
+    const modeConfig = allModes[modeName] ?? {};
+    if (modeName === 'musical' && aiEnabled) {
+      return cloneBands(modeConfig.ai_bands ?? modeConfig.bands ?? []);
+    }
+    return cloneBands(modeConfig.bands ?? []);
+  };
+
   const [file,              setFile]              = useState(null);
   const [currentMode,       setCurrentMode]       = useState('generic');
   const [allModes,          setAllModes]          = useState({});
@@ -240,6 +253,18 @@ export default function App() {
     }
   }, [outputSpectrogram]);
 
+  /* ── Restore default musical ranges when AI is toggled off ── */
+  useEffect(() => {
+    if (currentMode !== 'musical') return;
+    setBands(getModeBands('musical', useAiModel));
+    if (!useAiModel) {
+      setOutputAI(null);
+      setAiSpectrogram(null);
+      setAiStatusMessage(null);
+      aiRetryAttemptedRef.current = false;
+    }
+  }, [currentMode, useAiModel, allModes]);
+
   /* ── bandsLoadedFromConfig event ── */
   useEffect(() => {
     const handler = (e) => { if (file) processSignalWithBands(e.detail); };
@@ -262,13 +287,10 @@ if (result.ai_analysis && currentMode === 'musical') {
     setBands(prevBands => prevBands.map(band => {
       const aiData = result.ai_analysis[band.id];
       if (aiData) {
-        // Only add the label if it's not already there
-        const cleanLabel = band.label.replace(' ', '');
         return {
           ...band,
-          min_hz: aiData.min_hz,
-          max_hz: aiData.max_hz,
-          label: `${cleanLabel} `
+          ai_min: aiData.min_hz,
+          ai_max: aiData.max_hz,
         };
       }
       return band;
@@ -347,7 +369,7 @@ if (result.ai_analysis && currentMode === 'musical') {
         waveletWeights,
         waveletType,
         waveletLevels,
-        currentMode === 'musical' ? true : useAiModel,
+        useAiModel,
         requestAbortController.current.signal
       );
       applyResult(result);
@@ -385,7 +407,7 @@ if (result.ai_analysis && currentMode === 'musical') {
           waveletWeights,
           waveletType,
           waveletLevels,
-          currentMode === 'musical' ? true : useAiModel,
+          useAiModel,
           requestAbortController.current.signal
         );
         applyResult(result);
@@ -422,7 +444,7 @@ if (result.ai_analysis && currentMode === 'musical') {
     setAiSpectrogram(null);
 
     if (newMode === 'ecg') setIsAudiogram(false);
-    if (newMode !== 'generic') setBands(allModes[newMode]?.bands ?? []);
+    if (newMode !== 'generic') setBands(getModeBands(newMode, newMode === 'musical'));
     else setBands([]);
     if (newMode === 'musical') {
       setVisFreq({ min: 20, max: 20000 });
@@ -450,7 +472,7 @@ if (result.ai_analysis && currentMode === 'musical') {
   };
 
   const hasResults = inputSignal && outputSignal && !loading;
-  const showAiSpectrogram = currentMode !== 'generic' && !!aiSpectrogram;
+  const showAiSpectrogram = currentMode === 'musical' && useAiModel && !!aiSpectrogram;
 
   /* ── Mode tab list ── */
   const modeEntries = Object.entries({

@@ -1,37 +1,87 @@
 {
   "musical": {
     "label": "Musical AI (HTDemucs)",
-    "description": "AI-driven source separation. The Manual EQ bands below will automatically re-calibrate to the signal's detected ground-truth ranges.",
+    "description": "AI-driven source separation. With AI off, standard musical EQ bands are used. With AI on, stem-aware bands are used and re-calibrated from the detected content.",
     "bands": [
-      { 
-        "id": "drums", 
-        "label": "Drums & Percussion", 
-        "min_hz": 30, 
-        "max_hz": 16000, 
+      {
+        "id": "sub_bass",
+        "label": "Sub-Bass",
+        "min_hz": 20,
+        "max_hz": 60,
+        "color": "#4f46e5",
+        "description": "Deep low-end foundation and rumble."
+      },
+      {
+        "id": "bass",
+        "label": "Bass",
+        "min_hz": 60,
+        "max_hz": 250,
+        "color": "#2563eb",
+        "description": "Bassline weight and kick body."
+      },
+      {
+        "id": "low_mid",
+        "label": "Low-Mid",
+        "min_hz": 250,
+        "max_hz": 500,
+        "color": "#059669",
+        "description": "Warmth and low-mid buildup."
+      },
+      {
+        "id": "high_mid",
+        "label": "High-Mid",
+        "min_hz": 500,
+        "max_hz": 2000,
+        "color": "#d97706",
+        "description": "Attack, bite, and melodic definition."
+      },
+      {
+        "id": "presence",
+        "label": "Presence",
+        "min_hz": 2000,
+        "max_hz": 4000,
+        "color": "#dc2626",
+        "description": "Clarity and vocal/instrument presence."
+      },
+      {
+        "id": "brilliance",
+        "label": "Brilliance",
+        "min_hz": 4000,
+        "max_hz": 5512,
+        "color": "#7c3aed",
+        "description": "Air, sparkle, and top-end sheen within the current sample-rate limit."
+      }
+    ],
+    "ai_bands": [
+      {
+        "id": "drums",
+        "label": "Drums & Percussion",
+        "min_hz": 30,
+        "max_hz": 16000,
         "color": "#e74c3c",
         "description": "Adaptive Range: Calibrated by AI analysis of percussion transients."
       },
-      { 
-        "id": "bass", 
-        "label": "Bass Guitar/Synth", 
-        "min_hz": 20, 
-        "max_hz": 500, 
+      {
+        "id": "bass",
+        "label": "Bass Guitar/Synth",
+        "min_hz": 20,
+        "max_hz": 500,
         "color": "#3498db",
         "description": "Adaptive Range: Calibrated by AI analysis of low-end rhythmic foundation."
       },
-      { 
-        "id": "vocals", 
-        "label": "Lead Vocals", 
-        "min_hz": 150, 
-        "max_hz": 8000, 
+      {
+        "id": "vocals",
+        "label": "Lead Vocals",
+        "min_hz": 150,
+        "max_hz": 8000,
         "color": "#2ecc71",
         "description": "Adaptive Range: Calibrated by AI analysis of human vocal formants."
       },
-      { 
-        "id": "other", 
-        "label": "Instruments (Other)", 
-        "min_hz": 200, 
-        "max_hz": 15000, 
+      {
+        "id": "other",
+        "label": "Instruments (Other)",
+        "min_hz": 200,
+        "max_hz": 15000,
         "color": "#f1c40f",
         "description": "Adaptive Range: Calibrated by AI analysis of melodic textures."
       }

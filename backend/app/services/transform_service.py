@@ -82,7 +82,12 @@ def compute_fft_magnitude(
 
 
 # --- Wavelet Level Frequency Ranges Helper ---
-def compute_wavelet_level_ranges(sample_rate: float, wavelet: str, levels: int) -> List[Dict[str, Any]]:
+def compute_wavelet_level_ranges(
+    sample_rate: float,
+    wavelet: str,
+    levels: int,
+    band_labels: Dict[str, str] | None = None,
+) -> List[Dict[str, Any]]:
     """
     Returns a list of dicts for each DWT level with id, label, min_hz, max_hz.
     min_hz = sample_rate / 2**(level+1)
@@ -90,12 +95,13 @@ def compute_wavelet_level_ranges(sample_rate: float, wavelet: str, levels: int) 
     Level 1 = highest frequency detail coefficients.
     """
     bands = []
+    band_labels = band_labels or {}
     for level in range(1, levels + 1):
         min_hz = sample_rate / (2 ** (level + 1))
         max_hz = sample_rate / (2 ** level)
         bands.append({
             "id": f"level_{level}",
-            "label": f"Level {level}",
+            "label": band_labels.get(f"level_{level}", f"Level {level}"),
             "min_hz": min_hz,
             "max_hz": max_hz
         })
@@ -104,7 +110,7 @@ def compute_wavelet_level_ranges(sample_rate: float, wavelet: str, levels: int) 
     max_hz = sample_rate / (2 ** (levels + 1))
     bands.append({
         "id": "approx",
-        "label": "Approx",
+        "label": band_labels.get("approx", "Approx"),
         "min_hz": min_hz,
         "max_hz": max_hz
     })
