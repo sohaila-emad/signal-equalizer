@@ -255,6 +255,8 @@ def register_routes(app: Flask) -> None:
 
             y_ai = None
             ai_analysis = None  # <--- New variable to hold the Ground Truth data
+            ai_error = None
+            ai_f, ai_t, ai_S = None, None, None
 
             y_eq = apply_equalizer(y, float(sr), bands, weights)
 
@@ -266,6 +268,7 @@ def register_routes(app: Flask) -> None:
                     print(f"[musical AI] failed: {e} — using equalizer output")
                     y_ai = None
                     ai_analysis = None
+                    ai_error = str(e)
 
             # 3. Wavelet Pipeline
             wavelet_weights_raw = request.form.get("wavelet_weights")
@@ -280,11 +283,20 @@ def register_routes(app: Flask) -> None:
                 wavelet = w_cfg.get("wavelet", "db4")
                 wavelet_levels = int(w_cfg.get("levels", 4))
 
-            y_wavelet = apply_wavelet_equalizer(y, float(sr), wavelet, wavelet_levels, wavelet_weights)
+            # For musical mode, apply wavelet on the processed musical path:
+            # AI output when available, otherwise FFT-equalized output.
+            # Other modes keep wavelet applied on the original input.
+            wavelet_input = y
+            if mode == "musical":
+                wavelet_input = y_ai if y_ai is not None else y_eq
+
+            y_wavelet = apply_wavelet_equalizer(wavelet_input, float(sr), wavelet, wavelet_levels, wavelet_weights)
 
             # 4. Math Transforms
             in_f, in_t, in_S = compute_spectrogram(y, float(sr))
             out_f, out_t, out_S = compute_spectrogram(y_eq, float(sr))
+            if y_ai is not None:
+                ai_f, ai_t, ai_S = compute_spectrogram(y_ai, float(sr))
             freq_axis, input_mag = compute_fft_magnitude(y, float(sr))
             _, output_mag = compute_fft_magnitude(y_eq, float(sr))
             wavelet_level_bands = compute_wavelet_level_ranges(float(sr), wavelet, wavelet_levels)
@@ -306,8 +318,11 @@ def register_routes(app: Flask) -> None:
                 "output_wavelet_audio": y_wavelet[::step].tolist(),
                 "output_ai": y_ai[::step].tolist() if y_ai is not None else None,
                 "ai_analysis": ai_analysis,  # <--- INJECTED: Sends detected min/max to React
+                "ai_error": ai_error,
+                "ai_requested": use_ai,
                 "spectrogram_input": {"freqs": in_f, "times": in_t, "values": in_S},
                 "spectrogram_output": {"freqs": out_f, "times": out_t, "values": out_S},
+                "spectrogram_ai": ({"freqs": ai_f, "times": ai_t, "values": ai_S} if y_ai is not None else None),
                 "fft_freqs": freq_axis,
                 "input_fft": input_mag,
                 "output_fft": output_mag,

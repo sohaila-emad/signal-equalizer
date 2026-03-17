@@ -180,6 +180,7 @@ export default function App() {
   const [outputSignal,       setOutputSignal]       = useState(null);
   const [inputSpectrogram,   setInputSpectrogram]   = useState(null);
   const [outputSpectrogram,  setOutputSpectrogram]  = useState(null);
+  const [aiSpectrogram,      setAiSpectrogram]      = useState(null);
   const [fftData,            setFftData]            = useState(null);
   const [sampleRate,         setSampleRate]         = useState(11025);
 
@@ -188,6 +189,7 @@ export default function App() {
   const [showSpectrograms,   setShowSpectrograms]   = useState(true);
   const [isAudiogram,        setIsAudiogram]        = useState(false);
   const [useAiModel,         setUseAiModel]         = useState(false);
+  const [aiStatusMessage,    setAiStatusMessage]    = useState(null);
   const [ecgAnalysis,        setEcgAnalysis]        = useState({ bpm: null, type: null });
   // const [ecgWavFile,         setEcgWavFile]         = useState(null);
 
@@ -203,6 +205,7 @@ export default function App() {
   const debounceTimer = useRef(null);
   const requestAbortController = useRef(null);
   const isInternalUpdate = useRef(false);
+  const aiRetryAttemptedRef = useRef(false);
   /* ── Load modes ── */
   useEffect(() => {
     getModes().then(setAllModes).catch(() => setError('Failed to load modes from server.'));
@@ -250,6 +253,7 @@ export default function App() {
     setSampleRate(result.sample_rate);
     // ECG BPM calculation is performed in EcgAnalysis; clear previous ECG analysis here
     setEcgAnalysis({ bpm: null, type: null });
+    setAiStatusMessage(result.ai_error || null);
 
 if (result.ai_analysis && currentMode === 'musical') {
     // 1. Mark this as an internal update so useEffect ignores it
@@ -281,6 +285,15 @@ if (result.ai_analysis && currentMode === 'musical') {
       times: result.spectrogram_output.times,
       values: result.spectrogram_output.values,
     });
+    setAiSpectrogram(
+      result.spectrogram_ai
+        ? {
+            freqs: result.spectrogram_ai.freqs,
+            times: result.spectrogram_ai.times,
+            values: result.spectrogram_ai.values,
+          }
+        : null
+    );
     setFftData({
       freqs:    result.fft_freqs,
       inputMag: result.input_fft,
@@ -292,6 +305,25 @@ if (result.ai_analysis && currentMode === 'musical') {
     setWaveletLevelBands(result.wavelet_level_bands || []);
     setWaveletConfigUsed(result.wavelet_config_used || null);
 
+    if (
+      currentMode === 'musical' &&
+      useAiModel &&
+      !result.spectrogram_ai &&
+      !result.ai_error
+    ) {
+      if (!result.ai_requested && !aiRetryAttemptedRef.current) {
+        aiRetryAttemptedRef.current = true;
+        setAiStatusMessage('AI request was not applied. Retrying once...');
+        setTimeout(() => {
+          processSignalWithBands(bands);
+        }, 0);
+      } else if (!result.ai_requested) {
+        setAiStatusMessage('AI request is still not being applied. Please refresh the page once and retry in Musical mode.');
+      }
+    } else if (result.spectrogram_ai) {
+      aiRetryAttemptedRef.current = false;
+    }
+
     setLoading(false);
   };
 
@@ -302,6 +334,8 @@ if (result.ai_analysis && currentMode === 'musical') {
 
       setLoading(true); setError(null);
       setOutputAI(null);
+      setAiSpectrogram(null);
+      setAiStatusMessage(null);
       const fw = Object.keys(weights).length > 0 ? weights : 
            bands.reduce((acc, b) => ({ ...acc, [b.id]: b.scale || 1.0 }), {});
       if (currentMode === 'generic') bandsArg.forEach((b) => { if (b.id) fw[b.id] = b.scale ?? 1; });
@@ -313,7 +347,7 @@ if (result.ai_analysis && currentMode === 'musical') {
         waveletWeights,
         waveletType,
         waveletLevels,
-        useAiModel,
+        currentMode === 'musical' ? true : useAiModel,
         requestAbortController.current.signal
       );
       applyResult(result);
@@ -339,6 +373,8 @@ if (result.ai_analysis && currentMode === 'musical') {
 
         setLoading(true); setError(null);
         setOutputAI(null);
+        setAiSpectrogram(null);
+        setAiStatusMessage(null);
         const fw = { ...weights };
         if (currentMode === 'generic') bands.forEach((b) => { if (b.id) fw[b.id] = b.scale ?? 1; });
         const result = await uploadAndTransform(
@@ -349,7 +385,7 @@ if (result.ai_analysis && currentMode === 'musical') {
           waveletWeights,
           waveletType,
           waveletLevels,
-          useAiModel,
+          currentMode === 'musical' ? true : useAiModel,
           requestAbortController.current.signal
         );
         applyResult(result);
@@ -371,7 +407,9 @@ if (result.ai_analysis && currentMode === 'musical') {
     setEcgAnalysis({ bpm: null, type: null });
     setWaveletWeights({});
     setOutputAI(null);
-    setUseAiModel(false);
+    setUseAiModel(newMode === 'musical');
+    setAiStatusMessage(null);
+    aiRetryAttemptedRef.current = false;
 
     // Clear previous results when switching modes
     setFile(null);
@@ -381,6 +419,7 @@ if (result.ai_analysis && currentMode === 'musical') {
     setFftData(null);
     setInputSpectrogram(null);
     setOutputSpectrogram(null);
+    setAiSpectrogram(null);
 
     if (newMode === 'ecg') setIsAudiogram(false);
     if (newMode !== 'generic') setBands(allModes[newMode]?.bands ?? []);
@@ -411,6 +450,7 @@ if (result.ai_analysis && currentMode === 'musical') {
   };
 
   const hasResults = inputSignal && outputSignal && !loading;
+  const showAiSpectrogram = currentMode !== 'generic' && !!aiSpectrogram;
 
   /* ── Mode tab list ── */
   const modeEntries = Object.entries({
@@ -735,7 +775,14 @@ if (result.ai_analysis && currentMode === 'musical') {
                     visMax={visTime.max}
                     onVisChange={(lo, hi) => setVisTime({ min: lo, max: hi })}
                   />
-                  <div className="spectrogram-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
+                  <div
+                    className="spectrogram-grid"
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: `repeat(${showAiSpectrogram ? 3 : 2}, minmax(0, 1fr))`,
+                      gap: 16,
+                    }}
+                  >
                     {inputSpectrogram && (
                       <Spectrogram
                         freqs={inputSpectrogram.freqs}
@@ -760,7 +807,24 @@ if (result.ai_analysis && currentMode === 'musical') {
                         label="FFT Output"
                       />
                     )}
+                    {showAiSpectrogram && (
+                      <Spectrogram
+                        freqs={aiSpectrogram.freqs}
+                        times={aiSpectrogram.times}
+                        data={aiSpectrogram.values}
+                        minFreq={visFreq.min}
+                        maxFreq={visFreq.max}
+                        minTime={visTime.min}
+                        maxTime={visTime.max}
+                        label="AI Output"
+                      />
+                    )}
                   </div>
+                  {currentMode === 'musical' && useAiModel && !showAiSpectrogram && (
+                    <div style={{ marginTop: 10, color: 'var(--text-mid)', fontFamily: 'var(--mono)', fontSize: 11 }}>
+                      {aiStatusMessage ? `AI spectrogram unavailable: ${aiStatusMessage}` : 'AI is enabled. Processing model output...'}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
