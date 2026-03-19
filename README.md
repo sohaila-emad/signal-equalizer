@@ -8,7 +8,7 @@ A full-stack web application for audio signal equalization with real-time visual
 
 ## Screenshots
 
-### 🏠 Main Interface
+### 🏠Landing Page
 
 
 
@@ -28,6 +28,10 @@ A full-stack web application for audio signal equalization with real-time visual
 <img width="1396" height="770" alt="generic" src="https://github.com/user-attachments/assets/9af3c92c-4cb4-46e1-8641-c2cdf44bfa8e" />
 
 ---
+### 🎚️ Equalizer — AI separation
+
+![WhatsApp Image 2026-03-19 at 12 33 53 PM](https://github.com/user-attachments/assets/17678ba4-9313-41e7-aed2-449c6c514680)
+
 
 ### 📊 FFT Graph and spectrograms 
 
