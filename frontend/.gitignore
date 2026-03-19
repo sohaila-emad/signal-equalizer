@@ -23,3 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 venv/
+**/__pycache__/
+*.py[cod]
+*$py.class
