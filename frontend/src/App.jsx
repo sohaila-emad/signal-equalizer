@@ -204,7 +204,6 @@ export default function App() {
   const [useAiModel,         setUseAiModel]         = useState(false);
   const [aiStatusMessage,    setAiStatusMessage]    = useState(null);
   const [ecgAnalysis,        setEcgAnalysis]        = useState({ bpm: null, type: null });
-  // const [ecgWavFile,         setEcgWavFile]         = useState(null);
 
   const [freqRange, setFreqRange] = useState({ min: 0, max: 5000 });
   const [visFreq,   setVisFreq]   = useState({ min: 0, max: 5000 });
@@ -215,14 +214,42 @@ export default function App() {
   const [visTime, setVisTime] = useState({ min: 0, max: 10 }); // Default 10s view
 
   const prevFftIdRef  = useRef(null);
-  const debounceTimer = useRef(null);
   const requestAbortController = useRef(null);
   const isInternalUpdate = useRef(false);
   const aiRetryAttemptedRef = useRef(false);
+  const initialLoadDone = useRef(false);
+
+  // Separate pending states for FFT and Wavelet
+  const [fftPendingChanges, setFftPendingChanges] = useState(false);
+  const [waveletPendingChanges, setWaveletPendingChanges] = useState(false);
+
   /* ── Load modes ── */
   useEffect(() => {
     getModes().then(setAllModes).catch(() => setError('Failed to load modes from server.'));
   }, []);
+
+  /* ── Auto-load demo file on mount ── */
+  useEffect(() => {
+    if (!initialLoadDone.current) {
+      initialLoadDone.current = true;
+      loadDemoFile();
+    }
+  }, []);
+
+  /* ── Load demo file on demand ── */
+  const loadDemoFile = async () => {
+    try {
+      const res = await fetch('http://127.0.0.1:5000/static/synthetic_test.wav');
+      if (!res.ok) throw new Error('Demo file not found');
+      const blob = await res.blob();
+      if (blob && blob.size > 0) {
+        const demoFile = new File([blob], 'synthetic_test.wav', { type: 'audio/wav' });
+        setFile(demoFile);
+      }
+    } catch (err) {
+      setError('Could not load demo file: ' + err.message);
+    }
+  };
 
   /* ── Set freq range when new FFT data arrives ── */
   useEffect(() => {
@@ -358,7 +385,7 @@ if (result.ai_analysis && currentMode === 'musical') {
       setOutputAI(null);
       setAiSpectrogram(null);
       setAiStatusMessage(null);
-      const fw = Object.keys(weights).length > 0 ? weights : 
+      const fw = Object.keys(weights).length > 0 ? weights :
            bands.reduce((acc, b) => ({ ...acc, [b.id]: b.scale || 1.0 }), {});
       if (currentMode === 'generic') bandsArg.forEach((b) => { if (b.id) fw[b.id] = b.scale ?? 1; });
       const result = await uploadAndTransform(
@@ -373,6 +400,8 @@ if (result.ai_analysis && currentMode === 'musical') {
         requestAbortController.current.signal
       );
       applyResult(result);
+      setFftPendingChanges(false);
+      setWaveletPendingChanges(false);
     } catch (err) {
       if (err.name !== 'AbortError') {
         setError(err.message);
@@ -381,49 +410,108 @@ if (result.ai_analysis && currentMode === 'musical') {
     }
   };
 
-  /* ── Debounced processing ── */
+  /* ── Manual Apply function (replaces debounced processing) ── */
+  const handleApply = async () => {
+    if (!file) return;
+    try {
+      requestAbortController.current?.abort();
+      requestAbortController.current = new AbortController();
+
+      setLoading(true); setError(null);
+      setOutputAI(null);
+      setAiSpectrogram(null);
+      setAiStatusMessage(null);
+      const fw = { ...weights };
+      if (currentMode === 'generic') bands.forEach((b) => { if (b.id) fw[b.id] = b.scale ?? 1; });
+      const result = await uploadAndTransform(
+        file,
+        currentMode,
+        fw,
+        bands,
+        waveletWeights,
+        waveletType,
+        waveletLevels,
+        currentMode === 'musical' ? true : useAiModel,
+        requestAbortController.current.signal
+      );
+      applyResult(result);
+      setFftPendingChanges(false);
+      setWaveletPendingChanges(false);
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        setError(err.message);
+      }
+      setLoading(false);
+    }
+  };
+
+  /* ── Auto-process on file change only ── */
   useEffect(() => {
     if (!file) return;
     if (isInternalUpdate.current) {
       isInternalUpdate.current = false;
-      return; 
+      return;
     }
-    const run = async () => {
-      try {
-        requestAbortController.current?.abort();
-        requestAbortController.current = new AbortController();
+    handleApply();
+  }, [file]);
 
-        setLoading(true); setError(null);
-        setOutputAI(null);
-        setAiSpectrogram(null);
-        setAiStatusMessage(null);
-        const fw = { ...weights };
-        if (currentMode === 'generic') bands.forEach((b) => { if (b.id) fw[b.id] = b.scale ?? 1; });
-        const result = await uploadAndTransform(
-          file,
-          currentMode,
-          fw,
-          bands,
-          waveletWeights,
-          waveletType,
-          waveletLevels,
-          useAiModel,
-          requestAbortController.current.signal
-        );
-        applyResult(result);
-      } catch (err) {
-        if (err.name !== 'AbortError') {
-          setError(err.message);
-        }
-        setLoading(false);
-      }
-    };
-    clearTimeout(debounceTimer.current);
-    debounceTimer.current = setTimeout(run, useAiModel ? 1500 : 350);
-    return () => clearTimeout(debounceTimer.current);
-  }, [file, currentMode, bands, weights, waveletWeights, waveletType, waveletLevels, useAiModel]);
+  /* ── Auto-apply when wavelet type or levels change ── */
+  const handleWaveletTypeChange = async (newType) => {
+    setWaveletType(newType);
+    if (!file || currentMode !== 'generic') return;
 
-  const handleModeChange = (newMode) => {
+    try {
+      requestAbortController.current?.abort();
+      requestAbortController.current = new AbortController();
+      setLoading(true); setError(null);
+      setOutputAI(null);
+      setAiSpectrogram(null);
+      setAiStatusMessage(null);
+      const fw = { ...weights };
+      bands.forEach((b) => { if (b.id) fw[b.id] = b.scale ?? 1; });
+      const result = await uploadAndTransform(
+        file, currentMode, fw, bands, waveletWeights,
+        newType, waveletLevels,
+        useAiModel, requestAbortController.current.signal
+      );
+      applyResult(result);
+      setFftPendingChanges(false);
+      setWaveletPendingChanges(false);
+    } catch (err) {
+      if (err.name !== 'AbortError') setError(err.message);
+      setLoading(false);
+    }
+  };
+
+  const handleWaveletLevelsChange = async (newLevels) => {
+    setWaveletLevels(newLevels);
+    if (!file || currentMode !== 'generic') return;
+
+    try {
+      requestAbortController.current?.abort();
+      requestAbortController.current = new AbortController();
+      setLoading(true); setError(null);
+      setOutputAI(null);
+      setAiSpectrogram(null);
+      setAiStatusMessage(null);
+      const fw = { ...weights };
+      bands.forEach((b) => { if (b.id) fw[b.id] = b.scale ?? 1; });
+      const result = await uploadAndTransform(
+        file, currentMode, fw, bands, waveletWeights,
+        waveletType, newLevels,
+        useAiModel, requestAbortController.current.signal
+      );
+      applyResult(result);
+      setFftPendingChanges(false);
+      setWaveletPendingChanges(false);
+    } catch (err) {
+      if (err.name !== 'AbortError') setError(err.message);
+      setLoading(false);
+    }
+  };
+
+  const handleModeChange = async (newMode) => {
+    const hadFile = !!file;
     setCurrentMode(newMode);
     setWeights({});
     setEcgAnalysis({ bpm: null, type: null });
@@ -432,9 +520,10 @@ if (result.ai_analysis && currentMode === 'musical') {
     setUseAiModel(newMode === 'musical');
     setAiStatusMessage(null);
     aiRetryAttemptedRef.current = false;
+    setFftPendingChanges(false);
+    setWaveletPendingChanges(false);
 
-    // Clear previous results when switching modes
-    setFile(null);
+    // Don't clear file when switching modes - keep the current file
     setInputSignal(null);
     setOutputSignal(null);
     setOutputWavelet(null);
@@ -444,25 +533,71 @@ if (result.ai_analysis && currentMode === 'musical') {
     setAiSpectrogram(null);
 
     if (newMode === 'ecg') setIsAudiogram(false);
-    if (newMode !== 'generic') setBands(getModeBands(newMode, newMode === 'musical'));
-    else setBands([]);
+
+    let newBands = [];
+    if (newMode !== 'generic') {
+      newBands = allModes[newMode]?.bands ?? [];
+      setBands(newBands);
+    } else {
+      setBands([]);
+    }
+
     if (newMode === 'musical') {
       setVisFreq({ min: 20, max: 20000 });
       setFreqRange({ min: 0, max: 22050 });
     }
+
+    let newWaveletType = 'db4';
+    let newWaveletLevels = 4;
     const wcfg = allModes[newMode]?.wavelet_config;
-    if (wcfg) { setWaveletType(wcfg.wavelet || 'db4'); setWaveletLevels(wcfg.levels || 4); }
-    else { setWaveletType('db4'); setWaveletLevels(4); }
+    if (wcfg) {
+      newWaveletType = wcfg.wavelet || 'db4';
+      newWaveletLevels = wcfg.levels || 4;
+    }
+    setWaveletType(newWaveletType);
+    setWaveletLevels(newWaveletLevels);
+
+    // Auto-apply when switching modes with file loaded (instant switch)
+    if (hadFile && newMode !== 'ecg') {
+      try {
+        requestAbortController.current?.abort();
+        requestAbortController.current = new AbortController();
+        setLoading(true); setError(null);
+        setOutputAI(null);
+        setAiSpectrogram(null);
+        setAiStatusMessage(null);
+        const fw = newBands.reduce((acc, b) => ({ ...acc, [b.id]: b.scale || 1.0 }), {});
+        const result = await uploadAndTransform(
+          file,
+          newMode,
+          fw,
+          newBands,
+          {},
+          newWaveletType,
+          newWaveletLevels,
+          newMode === 'musical',
+          requestAbortController.current.signal
+        );
+        applyResult(result);
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          setError(err.message);
+        }
+        setLoading(false);
+      }
+    }
   };
 
   const handleEcgAnalysisComplete = (wavFile, suggestedBands, suggestedWaveletWeights) => {
-    setFile(wavFile); // triggers debounced /transform
+    setFile(wavFile);
     if (Array.isArray(suggestedBands) && suggestedBands.length > 0) {
       setBands(suggestedBands);
     }
     if (suggestedWaveletWeights && typeof suggestedWaveletWeights === 'object') {
       setWaveletWeights(suggestedWaveletWeights);
     }
+    setFftPendingChanges(true);
+    setWaveletPendingChanges(true);
   };
 
   const handleExport = () => {
@@ -474,14 +609,14 @@ if (result.ai_analysis && currentMode === 'musical') {
   const hasResults = inputSignal && outputSignal && !loading;
   const showAiSpectrogram = currentMode === 'musical' && useAiModel && !!aiSpectrogram;
 
-  /* ── Mode tab list ── */
+  /* ── Mode entries for combo box ── */
   const modeEntries = Object.entries({
     ...(allModes.generic ? {} : { generic: { label: 'Generic' } }),
     ...allModes,
   });
 
   const statusClass = loading ? 'processing' : error ? 'error' : file ? 'ready' : '';
-  const statusText  = loading ? 'Processing…'  : error ? 'Error'   : file ? 'Ready'  : 'No file loaded';
+  const statusText  = loading ? 'Processing...'  : error ? 'Error'   : file ? 'Ready'  : 'No file loaded';
 
   return (
     <div className="app-layout">
@@ -502,28 +637,6 @@ if (result.ai_analysis && currentMode === 'musical') {
           <FileUploader onFileSelect={setFile} file={file} mode={currentMode} />
         </div>
 
-        <nav className="sidebar-modes">
-          <span className="sidebar-section-label" style={{ padding: '0 16px', display: 'block', marginBottom: 6 }}>
-            Mode
-          </span>
-          {modeEntries.map(([key, cfg]) => {
-            const meta  = MODE_META[key] || { ...DEFAULT_META, label: cfg.label || key };
-            const label = meta.label || cfg.label || key;
-            return (
-              <button
-                key={key}
-                type="button"
-                className={`mode-tab ${currentMode === key ? 'active' : ''}`}
-                onClick={() => handleModeChange(key)}
-              >
-                <span className="mode-tab-icon">{meta.icon}</span>
-                <span>{label}</span>
-                {meta.badge && <span className="mode-tab-badge">{meta.badge}</span>}
-              </button>
-            );
-          })}
-        </nav>
-
         <div className="sidebar-status">
           <div className="status-row">
             <div className={`status-dot ${statusClass}`} />
@@ -533,9 +646,9 @@ if (result.ai_analysis && currentMode === 'musical') {
             )}
           </div>
           {hasResults && (
-            <button 
-              className="btn btn-primary" 
-              onClick={handleExport} 
+            <button
+              className="btn btn-primary"
+              onClick={handleExport}
               style={{ width: '100%', marginTop: 12, justifyContent: 'center' }}
             >
               <Icon d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
@@ -548,11 +661,29 @@ if (result.ai_analysis && currentMode === 'musical') {
       {/* ═══ MAIN ═══ */}
       <main className="main-content">
 
+        {/* Mode selector combo box */}
+        <div className="mode-selector">
+          <label>Mode:</label>
+          <select
+            value={currentMode}
+            onChange={(e) => handleModeChange(e.target.value)}
+            disabled={loading}
+          >
+            {modeEntries.map(([key, cfg]) => {
+              const meta = MODE_META[key] || { label: cfg.label || key };
+              const label = meta.label || cfg.label || key;
+              return (
+                <option key={key} value={key}>{label}</option>
+              );
+            })}
+          </select>
+        </div>
+
         {error && (
           <div className="error-card">
             <Icon d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01" />
             {error}
-            <button className="error-dismiss" onClick={() => setError(null)}>✕</button>
+            <button className="error-dismiss" onClick={() => setError(null)}>x</button>
           </div>
         )}
 
@@ -567,6 +698,14 @@ if (result.ai_analysis && currentMode === 'musical') {
                 </svg>
               </div>
               <p>Upload a <strong style={{ color: 'var(--text-mid)' }}>WAV file</strong> from the sidebar<br />then adjust the equalizer bands</p>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={loadDemoFile}
+                style={{ marginTop: 12 }}
+              >
+                Load Demo Audio
+              </button>
             </div>
           </div>
         )}
@@ -593,8 +732,8 @@ if (result.ai_analysis && currentMode === 'musical') {
                   Wavelet:
                   <select
                     value={waveletConfigUsed?.wavelet || waveletType}
-                    onChange={e => setWaveletType(e.target.value)}
-                    disabled={currentMode !== 'generic'}
+                    onChange={e => handleWaveletTypeChange(e.target.value)}
+                    disabled={currentMode !== 'generic' || loading}
                     style={{ marginLeft: 8 }}
                   >
                     {WAVELET_OPTIONS.map(opt => (
@@ -609,8 +748,8 @@ if (result.ai_analysis && currentMode === 'musical') {
                     min={1}
                     max={8}
                     value={waveletConfigUsed?.levels || waveletLevels}
-                    onChange={e => setWaveletLevels(Number(e.target.value))}
-                    disabled={currentMode !== 'generic'}
+                    onChange={e => handleWaveletLevelsChange(Number(e.target.value))}
+                    disabled={currentMode !== 'generic' || loading}
                     style={{ width: 48, marginLeft: 8 }}
                   />
                 </label>
@@ -624,7 +763,7 @@ if (result.ai_analysis && currentMode === 'musical') {
               {/* Collapsible Wavelet Bands */}
               <div className="collapsible-panel">
                 <button type="button" onClick={() => setWaveletBandsOpen(p => !p)} style={{ fontWeight: 600, marginBottom: 4 }}>
-                  Wavelet Bands ({waveletConfigUsed?.wavelet || waveletType}) {waveletBandsOpen ? '▲' : '▼'}
+                  Wavelet Bands ({waveletConfigUsed?.wavelet || waveletType}) {waveletBandsOpen ? '^' : 'v'}
                 </button>
                 {waveletBandsOpen && (
                   <SliderPanel
@@ -632,7 +771,10 @@ if (result.ai_analysis && currentMode === 'musical') {
                     bands={waveletLevelBands}
                     onBandsChange={() => {}}
                     weights={waveletWeights}
-                    onWeightsChange={setWaveletWeights}
+                    onWeightsChange={(w) => { setWaveletWeights(w); setWaveletPendingChanges(true); }}
+                    onApply={handleApply}
+                    pendingChanges={waveletPendingChanges}
+                    setPendingChanges={setWaveletPendingChanges}
                   />
                 )}
               </div>
@@ -641,7 +783,7 @@ if (result.ai_analysis && currentMode === 'musical') {
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginTop: 12 }}>
                 <div className="collapsible-panel" style={{ flex: 1 }}>
                   <button type="button" onClick={() => setFftBandsOpen(p => !p)} style={{ fontWeight: 600, marginBottom: 4 }}>
-                    FFT Bands {fftBandsOpen ? '▲' : '▼'}
+                    FFT Bands {fftBandsOpen ? '^' : 'v'}
                   </button>
                   {fftBandsOpen && (
                     <SliderPanel
@@ -651,6 +793,9 @@ if (result.ai_analysis && currentMode === 'musical') {
                       weights={weights}
                       onWeightsChange={setWeights}
                       isAiMode={useAiModel}
+                      onApply={handleApply}
+                      pendingChanges={fftPendingChanges}
+                      setPendingChanges={setFftPendingChanges}
                     />
                   )}
                 </div>
