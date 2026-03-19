@@ -234,6 +234,37 @@ input[type='range']::-webkit-slider-thumb{
 }
 input[type='range']:hover::-webkit-slider-thumb{transform:scale(1.25);box-shadow:0 0 0 5px var(--accent-dim)}
 
+/* ── Vertical Sliders (horizontal layout) ── */
+.sliders-vertical{display:flex;flex-direction:row;gap:24px;flex-wrap:wrap;justify-content:flex-start;padding:10px 0}
+.slider-col{display:flex;flex-direction:column;align-items:center;gap:8px;min-width:70px;max-width:100px}
+.slider-col-label{text-align:center}
+.slider-col-label strong{font-size:11px;font-weight:600;color:var(--text);display:block;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:90px}
+.slider-col-label span{font-family:var(--mono);font-size:9px;color:var(--text-dim);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:90px}
+.slider-vertical-track{height:140px;display:flex;align-items:center;justify-content:center}
+input[type='range'].vertical-slider{
+  -webkit-appearance:none;appearance:none;
+  width:140px;height:4px;
+  background:var(--surface-3);border-radius:2px;outline:none;cursor:pointer;
+  transform:rotate(-90deg);transform-origin:center center;
+}
+input[type='range'].vertical-slider::-webkit-slider-thumb{
+  -webkit-appearance:none;width:16px;height:16px;border-radius:50%;
+  background:var(--accent);box-shadow:0 0 0 3px var(--accent-dim);
+  cursor:pointer;transition:transform .15s,box-shadow .15s;
+}
+input[type='range'].vertical-slider:hover::-webkit-slider-thumb{transform:scale(1.2);box-shadow:0 0 0 5px var(--accent-dim)}
+.slider-col-value{font-family:var(--mono);font-size:11px;color:var(--accent);text-align:center;white-space:nowrap}
+
+/* ── Mode Selector Combo Box ── */
+.mode-selector{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.mode-selector label{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim)}
+.mode-selector select{padding:8px 14px;background:var(--surface-2);border:1px solid var(--border-mid);border-radius:var(--radius-sm);color:var(--text);font-size:13px;min-width:180px;cursor:pointer;transition:border-color .15s}
+.mode-selector select:hover,.mode-selector select:focus{border-color:var(--accent)}
+
+/* ── Apply Button ── */
+.apply-btn-row{display:flex;gap:10px;align-items:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border)}
+.apply-btn{padding:10px 24px !important;font-size:13px !important;font-weight:500}
+
 /* ── Band controls ── */
 .band-controls{
   background:var(--surface-2);border:1px solid var(--border);
@@ -563,6 +594,70 @@ select:focus{border-color:var(--accent)}
 .vs-dl-btn:hover {
   background: rgba(61, 139, 255, 0.18) !important;
   border-color: rgba(61, 139, 255, 0.45) !important;
+}
+
+/* ── Gain row (play + slider) inside source cards ── */
+.vs-gain-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+}
+.vs-play-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px !important;
+  font-size: 12px !important;
+}
+.vs-gain-slider-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.vs-gain-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+.vs-gain-slider {
+  flex: 1;
+  min-width: 60px;
+  accent-color: var(--accent-2);
+  cursor: pointer;
+}
+.vs-gain-value {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-mid);
+  min-width: 36px;
+  text-align: right;
+}
+
+/* ── Combined mix viewer ── */
+.vs-mix-viewer {
+  margin-top: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  animation: slideUp 0.22s var(--ease) both;
+}
+.vs-mix-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(34, 197, 94, 0.06);
 }
 
 /* ── Animal Separation query selector ── */

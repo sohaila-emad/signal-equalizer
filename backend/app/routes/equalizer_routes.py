@@ -12,7 +12,7 @@ from typing import Dict, Any
 import librosa
 import numpy as np
 import requests as _requests
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_file
 
 from app.services.equalizer_service import apply_equalizer, apply_wavelet_equalizer
 from app.services.transform_service import compute_spectrogram, compute_fft_magnitude, compute_wavelet_level_ranges
@@ -25,18 +25,39 @@ def load_modes_config() -> Dict[str, Any]:
     with config_path.open("r", encoding="utf-8") as f:
         return json.load(f)
 
-def load_generic_config() -> Dict[str, Any]:
-    config_path = Path(__file__).resolve().parent.parent.parent / "config" / "generic_saved.json"
+def load_generic_config(name: str = 'default') -> Dict[str, Any]:
+    config_dir = Path(__file__).resolve().parent.parent.parent / "config" / "saved_configs"
+    config_path = config_dir / f"{name}.json"
     if not config_path.exists():
+        # Fallback to old single file for backwards compatibility
+        old_path = Path(__file__).resolve().parent.parent.parent / "config" / "generic_saved.json"
+        if old_path.exists():
+            with old_path.open("r", encoding="utf-8") as f:
+                return json.load(f)
         return {"bands": []}
     with config_path.open("r", encoding="utf-8") as f:
         return json.load(f)
 
-def save_generic_config(bands: list) -> None:
-    config_path = Path(__file__).resolve().parent.parent.parent / "config" / "generic_saved.json"
-    config_path.parent.mkdir(parents=True, exist_ok=True)
+def save_generic_config(bands: list, name: str = 'default') -> None:
+    config_dir = Path(__file__).resolve().parent.parent.parent / "config" / "saved_configs"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    config_path = config_dir / f"{name}.json"
     with config_path.open("w", encoding="utf-8") as f:
         json.dump({"bands": bands}, f, indent=2)
+
+def list_generic_configs() -> list:
+    config_dir = Path(__file__).resolve().parent.parent.parent / "config" / "saved_configs"
+    if not config_dir.exists():
+        return []
+    return [f.stem for f in config_dir.glob("*.json")]
+
+def delete_generic_config(name: str) -> bool:
+    config_dir = Path(__file__).resolve().parent.parent.parent / "config" / "saved_configs"
+    config_path = config_dir / f"{name}.json"
+    if config_path.exists():
+        config_path.unlink()
+        return True
+    return False
 
 
 # ── DPRNN model cache (loaded once per process) ───────────────────────────────
@@ -218,21 +239,44 @@ def register_routes(app: Flask) -> None:
     def health():
         return jsonify({"status": "ok", "message": "Backend is up"})
 
+    @app.get("/static/synthetic_test.wav")
+    def serve_synthetic_test():
+        synthetic_path = Path(__file__).resolve().parent.parent.parent / "data" / "synthetic" / "synthetic_test.wav"
+        if synthetic_path.exists():
+            return send_file(str(synthetic_path), mimetype='audio/wav')
+        return jsonify({"error": "Synthetic test file not found"}), 404
+
     @app.get("/modes")
     def get_modes():
         return jsonify(modes_config)
 
     @app.get("/config/load")
     def load_config():
-        return jsonify(load_generic_config())
+        name = request.args.get('name', 'default')
+        return jsonify(load_generic_config(name))
 
     @app.post("/config/save")
     def save_config():
         data = request.get_json()
         if not data or "bands" not in data:
             return jsonify({"error": "Missing 'bands'"}), 400
-        save_generic_config(data["bands"])
-        return jsonify({"status": "ok", "message": "Configuration saved"})
+        name = data.get('name', 'default')
+        save_generic_config(data["bands"], name)
+        return jsonify({"status": "ok", "message": f"Configuration '{name}' saved"})
+
+    @app.get("/config/list")
+    def list_configs():
+        configs = list_generic_configs()
+        return jsonify({"configs": configs})
+
+    @app.delete("/config/delete")
+    def delete_config():
+        name = request.args.get('name')
+        if not name:
+            return jsonify({"error": "Missing 'name' parameter"}), 400
+        if delete_generic_config(name):
+            return jsonify({"status": "ok", "message": f"Configuration '{name}' deleted"})
+        return jsonify({"error": f"Configuration '{name}' not found"}), 404
 
     @app.post("/transform")
     def transform():

@@ -1,0 +1,26 @@
+# Core ML/Audio
+torch
+torchaudio
+librosa
+soundfile
+scipy
+numpy
+PyWavelets
+
+# AI Models
+demucs
+asteroid
+julius
+
+# Web Server
+Flask
+flask-cors
+requests
+
+# ECG Analysis
+wfdb
+
+# AudioSep dependencies (model auto-cloned from GitHub)
+transformers
+pytorch-lightning
+einops

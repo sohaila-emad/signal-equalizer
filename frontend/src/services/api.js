@@ -150,11 +150,12 @@ export async function separateAnimal(file, queries, signal = undefined) {
 }
 
 /**
- * Load saved generic configuration.
+ * Load saved generic configuration by name.
+ * @param {string} name - Config name (optional, defaults to 'default')
  * @returns {Promise<Object>} - { bands: [...] }
  */
-export async function loadConfig() {
-  const response = await fetch(`${API_BASE}/config/load`);
+export async function loadConfig(name = 'default') {
+  const response = await fetch(`${API_BASE}/config/load?name=${encodeURIComponent(name)}`);
 
   if (!response.ok) {
     const text = await response.text();
@@ -165,20 +166,55 @@ export async function loadConfig() {
 }
 
 /**
- * Save generic configuration.
+ * Save generic configuration with a name.
  * @param {Array} bands - Array of band configurations
+ * @param {string} name - Config name (optional, defaults to 'default')
  * @returns {Promise<Object>} - Response from backend
  */
-export async function saveConfig(bands) {
+export async function saveConfig(bands, name = 'default') {
   const response = await fetch(`${API_BASE}/config/save`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ bands }),
+    body: JSON.stringify({ bands, name }),
   });
 
   if (!response.ok) {
     const text = await response.text();
     throw new Error(`Failed to save config: ${response.status}: ${text}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * List all saved config names.
+ * @returns {Promise<string[]>} - Array of config names
+ */
+export async function listConfigs() {
+  const response = await fetch(`${API_BASE}/config/list`);
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to list configs: ${response.status}: ${text}`);
+  }
+
+  const data = await response.json();
+  return data.configs || [];
+}
+
+/**
+ * Delete a saved config by name.
+ * @param {string} name - Config name
+ * @returns {Promise<Object>} - Response from backend
+ */
+export async function deleteConfig(name) {
+  const response = await fetch(`${API_BASE}/config/delete?name=${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to delete config: ${response.status}: ${text}`);
   }
 
   return response.json();

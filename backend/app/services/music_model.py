@@ -33,8 +33,11 @@ def _get_model():
     global _model
     if _model is None:
         from demucs.pretrained import get_model
-        torch.set_num_threads(4)
-        torch.set_num_interop_threads(2)
+        try:
+            torch.set_num_threads(4)
+            torch.set_num_interop_threads(2)
+        except RuntimeError:
+            pass  # threads already configured by another model
         print("🎵 Loading htdemucs (once)...")
         _model = get_model("htdemucs")   # 4-stem
         _model.eval()

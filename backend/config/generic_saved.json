@@ -1,36 +1,39 @@
 {
   "bands": [
     {
-      "id": "baseline",
-      "label": "Baseline Wander (Breathing)",
-      "max_hz": 0.8,
-      "min_hz": 0.1
+      "id": "band_1773757527938",
+      "label": "Band 1",
+      "min_hz": 159,
+      "max_hz": 1000,
+      "scale": 1,
+      "ranges": [
+        {
+          "min_hz": 159,
+          "max_hz": 1000
+        },
+        {
+          "min_hz": 200,
+          "max_hz": 1900
+        },
+        {
+          "min_hz": 0,
+          "max_hz": 1000
+        }
+      ]
     },
     {
-      "id": "p_t_waves",
-      "label": "P & T Waves (Slow)",
-      "max_hz": 10,
-      "min_hz": 0.8
+      "id": "band_1773757552090",
+      "label": "Band 2",
+      "min_hz": 0,
+      "max_hz": 1000,
+      "scale": 1
     },
     {
-      "id": "qrs_complex",
-      "label": "QRS Complex (R-Peaks)",
-      "max_hz": 40,
-      "min_hz": 10
-    },
-    {
-      "id": "power_line",
-      "label": "60Hz Noise (Hum)",
-      "max_hz": 62,
-      "min_hz": 58,
-      "scale": 1.57
-    },
-    {
-      "id": "muscle_noise",
-      "label": "High Freq Noise",
-      "max_hz": 150,
-      "min_hz": 62,
-      "scale": 1.79
+      "id": "band_1773757560865",
+      "label": "Band 3",
+      "min_hz": 0,
+      "max_hz": 1000,
+      "scale": 1
     }
   ]
 }

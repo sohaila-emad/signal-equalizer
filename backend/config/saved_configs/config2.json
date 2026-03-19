@@ -1,0 +1,34 @@
+{
+  "bands": [
+    {
+      "id": "band_1773811513007",
+      "label": "Band 1",
+      "min_hz": 0,
+      "max_hz": 1000,
+      "scale": 0.23,
+      "ranges": [
+        {
+          "min_hz": 26,
+          "max_hz": 300
+        },
+        {
+          "min_hz": 600,
+          "max_hz": 800
+        }
+      ]
+    },
+    {
+      "id": "band_1773811596450",
+      "label": "Band 2",
+      "min_hz": 0,
+      "max_hz": 1011,
+      "scale": 0,
+      "ranges": [
+        {
+          "min_hz": 0,
+          "max_hz": 1011
+        }
+      ]
+    }
+  ]
+}
