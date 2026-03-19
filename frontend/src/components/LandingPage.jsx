@@ -208,6 +208,8 @@ export default function LandingPage({ onEnter }) {
   return (
     <div style={{
       minHeight: '100vh',
+      width: '100vw',
+      position: 'relative',
       background: '#07090f',
       color: '#d8e4f0',
       fontFamily: "'Outfit', sans-serif",
@@ -352,7 +354,7 @@ export default function LandingPage({ onEnter }) {
               Launch App
             </button>
             <a
-              href="https://github.com"
+              href="https://github.com/sohaila-emad/signal-equalizer"
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 8,
                 padding: '14px 28px', borderRadius: 8,

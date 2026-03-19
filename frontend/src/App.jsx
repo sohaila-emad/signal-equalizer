@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import './App.css';
-import LandingPage from './LandingPage';
+import LandingPage from './components/LandingPage';
 import SliderPanel from './components/Equalizer/SliderPanel';
 // import LinkedViewers from './components/Viewers/LinkedViewers';
 import TripleViewers from './components/Viewers/TripleViewers';
