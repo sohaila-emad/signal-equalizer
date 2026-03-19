@@ -106,7 +106,7 @@ _AUDIOSEP_CHECKPOINTS = [
 
 
 def _ensure_audiosep_repo():
-    """Clone AudioSep repo + download checkpoints + patch factory.py if needed."""
+    """Clone AudioSep repo + download checkpoints + apply compatibility patches."""
     asep = Path(_AUDIOSEP_DIR)
 
     # 1) Clone repo if missing
@@ -160,6 +160,17 @@ def _ensure_audiosep_repo():
         if patched:
             factory.write_text(src, encoding="utf-8")
             print("[AudioSep] Patched factory.py for torch >= 2.6")
+
+    # 4) Patch lightning import to avoid lightning_cloud incompatibility
+    audiosep_model = asep / "models" / "audiosep.py"
+    if audiosep_model.exists():
+        src = audiosep_model.read_text(encoding="utf-8")
+        old_import = "import lightning.pytorch as pl"
+        new_import = "import pytorch_lightning as pl"
+        if old_import in src:
+            src = src.replace(old_import, new_import)
+            audiosep_model.write_text(src, encoding="utf-8")
+            print("[AudioSep] Patched audiosep.py to use pytorch_lightning")
 
 
 def _get_audiosep_model():
