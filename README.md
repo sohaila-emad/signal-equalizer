@@ -12,7 +12,11 @@ A full-stack web application for audio signal equalization with real-time visual
 
 
 
----<img width="592" height="941" alt="landing" src="https://github.com/user-attachments/assets/b539ed72-f34f-4d88-9229-0b20a7adb71a" />
+
+
+
+https://github.com/user-attachments/assets/42d1e428-cdcb-4c03-85b3-e22152b88812
+
 
 
 ### 🎚️ Equalizer — viewers 
@@ -291,17 +295,23 @@ signal-equalizer/
 
 ## Configuration
 
-### Adding a New Preset Mode
-Edit `backend/config/modes.json` and add a new entry:
-```json
-"my_mode": {
+Loading a Custom Band Configuration
+You can load your own band configuration directly through the UI — no need to edit any files or restart the backend.
+
+Create a JSON file on your machine with the following structure:
+
+json{
   "bands": [
-    { "id": "low", "label": "Low", "min_freq": 0, "max_freq": 500 },
-    { "id": "high", "label": "High", "min_freq": 500, "max_freq": 5512 }
+    { "id": "low",  "label": "Low",  "min_freq": 0,    "max_freq": 500  },
+    { "id": "mid",  "label": "Mid",  "min_freq": 500,  "max_freq": 2000 },
+    { "id": "high", "label": "High", "min_freq": 2000, "max_freq": 5512 }
   ]
 }
-```
-Restart the backend — the new mode appears in the frontend dropdown automatically.
+
+Switch to Generic mode in the sidebar
+Click Load Config and select your JSON file
+The bands load instantly and sliders appear for each one
+Click Save Config at any time to persist your current bands for next session
 
 ---
 
