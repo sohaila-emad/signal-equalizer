@@ -16,14 +16,14 @@ A full-stack web application for audio signal equalization with real-time visual
 
 
 ### 🎚️ Equalizer — viewers 
-
+Side-by-side waveform viewers showing the original (input) signal on the left and the equalized (output) signal on the right. Both viewers scroll and zoom together — pan by clicking and dragging, zoom with the scroll wheel down to individual samples. Playback controls let you play each viewer independently at speeds from 0.25× to 2×.
 
 <img width="1468" height="872" alt="music viewers" src="https://github.com/user-attachments/assets/6b7a3e00-c96a-4fd8-ab43-db3f893ecc62" />
 
 ---
 
 ### 🎚️ Equalizer — Generic Mode (Custom Bands)
-
+In Generic mode you define your own frequency bands from scratch. Set a min Hz, max Hz, and label for each band, then adjust its gain slider. Configurations can be saved to a JSON file and reloaded in future sessions. Band boundaries are drawn as vertical lines directly on the FFT graph for reference.
 
 <img width="1396" height="770" alt="generic" src="https://github.com/user-attachments/assets/9af3c92c-4cb4-46e1-8641-c2cdf44bfa8e" />
 
@@ -34,21 +34,22 @@ A full-stack web application for audio signal equalization with real-time visual
 
 
 ### 📊 FFT Graph and spectrograms 
-
+The FFT magnitude spectrum in linear scale, plotting frequency (Hz) on the x-axis against amplitude on the y-axis. The input signal is shown in a muted color and the equalized output on top, so you can directly see which bands were boosted or cut. Vertical dashed lines mark the boundaries of the active equalizer bands.
+spectrograms areTime-frequency heatmaps for both the input and output signals displayed side by side. The x-axis is time (seconds), the y-axis is frequency (Hz), and color intensity represents magnitude — brighter means louder. Use the time pan/zoom bar above to focus on a specific time window. The spectrogram can be hidden with the Show/Hide toggle to save screen space.
 
 <img width="1505" height="884" alt="music graphs" src="https://github.com/user-attachments/assets/15275a9b-6fb7-41d5-b88d-50d11cca5588" />
 
 ---
 
 ### 📊 FFT Graph — Logarithmic (Audiogram) Scale
-
+The same FFT graph switched to logarithmic (dB) scale, which matches how human hearing perceives loudness. This view is better for music and voice analysis — small differences at low amplitudes become visible and the x-axis spacing reflects perceptual frequency spacing. Toggle between linear and audiogram with the button above the graph.
 
 <img width="1502" height="517" alt="audiogram" src="https://github.com/user-attachments/assets/e46819d6-1fb3-429c-84ab-4c666e963b89" />
 
 ---
 
 ### 🫀 ECG Mode
-
+ECG mode targets electrocardiogram signals instead of audio. The frequency bands are calibrated for clinical signal components: baseline wander (0.05–0.5 Hz), QRS/P/T waves (0.5–40 Hz), high-frequency noise (40–150 Hz), and EMG artifact (>150 Hz). Adjust the band gains to isolate or suppress specific components and compare the filtered output waveform against the original.
 
 <img width="1824" height="820" alt="ecg viewer" src="https://github.com/user-attachments/assets/05a4275a-50cb-4e0e-b3bf-57fda08c9549" />
 
