@@ -12,7 +12,11 @@ A full-stack web application for audio signal equalization with real-time visual
 
 
 
----<img width="592" height="941" alt="landing" src="https://github.com/user-attachments/assets/b539ed72-f34f-4d88-9229-0b20a7adb71a" />
+
+
+
+https://github.com/user-attachments/assets/42d1e428-cdcb-4c03-85b3-e22152b88812
+
 
 
 ### 🎚️ Equalizer — viewers 
