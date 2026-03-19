@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import './App.css';
+import LandingPage from './LandingPage';
 import SliderPanel from './components/Equalizer/SliderPanel';
 // import LinkedViewers from './components/Viewers/LinkedViewers';
 import TripleViewers from './components/Viewers/TripleViewers';
@@ -158,6 +159,8 @@ function TimePanBar({ timeMin, timeMax, visMin, visMax, onVisChange }) {
 }
 
 export default function App() {
+
+  const [showLanding, setShowLanding] = useState(true);
 
   const cloneBands = (sourceBands = []) => sourceBands.map((band) => ({
     ...band,
@@ -618,6 +621,14 @@ if (result.ai_analysis && currentMode === 'musical') {
   const statusClass = loading ? 'processing' : error ? 'error' : file ? 'ready' : '';
   const statusText  = loading ? 'Processing...'  : error ? 'Error'   : file ? 'Ready'  : 'No file loaded';
 
+  if (showLanding) {
+    return <LandingPage onEnter={() => setShowLanding(false)} />;
+  }
+
+  if (showLanding) {
+    return <LandingPage onEnter={() => setShowLanding(false)} />;
+  }
+
   return (
     <div className="app-layout">
 
@@ -630,11 +641,38 @@ if (result.ai_analysis && currentMode === 'musical') {
             <span className="brand-name">Equalizer</span>
           </div>
           <div className="brand-sub">Signal Processing Studio</div>
+          <button className="brand-back-btn" onClick={() => setShowLanding(true)} title="Back to home">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 12H5M12 5l-7 7 7 7"/>
+            </svg>
+            Home
+          </button>
         </div>
 
         <div className="sidebar-upload">
           <span className="sidebar-section-label">Audio Source</span>
           <FileUploader onFileSelect={setFile} file={file} mode={currentMode} />
+        </div>
+
+        {/* Mode tabs in sidebar */}
+        <div className="sidebar-modes">
+          <span className="sidebar-section-label" style={{ padding: '0 16px', display: 'block', marginBottom: 4 }}>Mode</span>
+          {modeEntries.map(([key, cfg]) => {
+            const meta = MODE_META[key] || DEFAULT_META;
+            const label = meta.label || cfg.label || key;
+            return (
+              <button
+                key={key}
+                className={`mode-tab ${currentMode === key ? 'active' : ''}`}
+                onClick={() => !loading && handleModeChange(key)}
+                disabled={loading}
+              >
+                <span className="mode-tab-icon">{meta.icon}</span>
+                {label}
+                {meta.badge && <span className="mode-tab-badge">{meta.badge}</span>}
+              </button>
+            );
+          })}
         </div>
 
         <div className="sidebar-status">
@@ -661,22 +699,13 @@ if (result.ai_analysis && currentMode === 'musical') {
       {/* ═══ MAIN ═══ */}
       <main className="main-content">
 
-        {/* Mode selector combo box */}
-        <div className="mode-selector">
-          <label>Mode:</label>
-          <select
-            value={currentMode}
-            onChange={(e) => handleModeChange(e.target.value)}
-            disabled={loading}
-          >
-            {modeEntries.map(([key, cfg]) => {
-              const meta = MODE_META[key] || { label: cfg.label || key };
-              const label = meta.label || cfg.label || key;
-              return (
-                <option key={key} value={key}>{label}</option>
-              );
-            })}
-          </select>
+        {/* Page title bar */}
+        <div className="main-topbar">
+          <div className="main-topbar-left">
+            <span className="main-mode-label">
+              {(() => { const meta = MODE_META[currentMode]; return meta ? <>{meta.icon} {meta.label || currentMode}</> : currentMode; })()}
+            </span>
+          </div>
         </div>
 
         {error && (
