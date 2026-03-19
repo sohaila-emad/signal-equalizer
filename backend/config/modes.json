@@ -123,27 +123,27 @@
     }
   },
   "human": {
-    "label": "Speech & Voice",
-    "description": "Human speech processing and formant isolation.",
     "bands": [
-      { "id": "audio1", "label": "Audio 1", "min_hz": 51.17, "max_hz": 145.57 },
-      { "id": "audio2", "label": "Audio 2", "min_hz": 183.40, "max_hz": 572.26 },
-      { "id": "audio3", "label": "Audio 3", "min_hz": 54.21, "max_hz": 276.38 },
-      { "id": "audio4", "label": "Audio 4", "min_hz": 56.12, "max_hz": 118.92 }
+      { "id": "f0",  "label": "Pitch (F0)",     "min_hz": 80,   "max_hz": 300  },
+      { "id": "f0h", "label": "F0 Harmonics",   "min_hz": 300,  "max_hz": 550  },
+      { "id": "f1",  "label": "First Formant",  "min_hz": 550,  "max_hz": 950  },
+      { "id": "f2",  "label": "Second Formant", "min_hz": 950,  "max_hz": 2500 },
+      { "id": "hf",  "label": "Sibilance/Air",  "min_hz": 2500, "max_hz": 5500 }
     ],
     "wavelet_config": {
       "wavelet": "sym4",
       "levels": 5,
       "band_labels": {
-        "level_1": "Sibilance (s/sh/f)",
-        "level_2": "Upper Formants",
-        "level_3": "Lower Formants",
-        "level_4": "Fundamental Pitch",
-        "level_5": "Chest Resonance",
-        "approx": "Sub-vocal/Baseline"
+        "level_1": "Sibilance (2812–5625Hz)",
+        "level_2": "Upper Formants (1406–2812Hz)",
+        "level_3": "F2 Region (703–1406Hz)",
+        "level_4": "F1 Region (352–703Hz)",
+        "level_5": "Pitch Harmonics (176–352Hz)",
+        "approx":  "Fundamental F0 (0–176Hz)"
       }
     }
   },
+  
   "ecg": {
     "label": "ECG",
     "description": "Upload WFDB ECG record. ECGNet classifies arrhythmia, Grad-CAM highlights ROI, sliders control frequency components.",
