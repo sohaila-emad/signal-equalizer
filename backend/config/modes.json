@@ -104,10 +104,10 @@
     "label": "Bioacoustic Analysis",
     "description": "Analyze animal vocalizations across frequency ranges.",
     "bands": [
-      { "id": "dog",  "label": "Dog",  "min_hz": 100,  "max_hz": 12000 },
-      { "id": "cat",  "label": "Cat",  "min_hz": 55,   "max_hz": 79000 },
-      { "id": "cow",  "label": "Cow",  "min_hz": 40,   "max_hz": 2000  },
-      { "id": "bird", "label": "Bird", "min_hz": 1000,  "max_hz": 8000  }
+      { "id": "dog",  "label": "Dog",  "min_hz": 312,  "max_hz": 1217 },
+      { "id": "cat",  "label": "Cat",  "min_hz": 4716,   "max_hz": 11024 },
+      { "id": "cow",  "label": "Cow",  "min_hz": 11,   "max_hz": 194 },
+      { "id": "bird", "label": "Bird", "min_hz": 2972,  "max_hz": 5900  }
     ],
     "wavelet_config": {
       "wavelet": "db6",
@@ -126,10 +126,10 @@
     "label": "Speech & Voice",
     "description": "Human speech processing and formant isolation.",
     "bands": [
-      { "id": "audio1", "label": "Audio 1", "min_hz": 51.17, "max_hz": 145.57 },
-      { "id": "audio2", "label": "Audio 2", "min_hz": 183.40, "max_hz": 572.26 },
-      { "id": "audio3", "label": "Audio 3", "min_hz": 54.21, "max_hz": 276.38 },
-      { "id": "audio4", "label": "Audio 4", "min_hz": 56.12, "max_hz": 118.92 }
+      { "id": "audio1", "label": "Audio 1", "min_hz": 71, "max_hz": 189},
+      { "id": "audio2", "label": "Audio 2", "min_hz": 413, "max_hz": 1102 },
+      { "id": "audio3", "label": "Audio 3", "min_hz": 65, "max_hz": 172 },
+      { "id": "audio4", "label": "Audio 4", "min_hz": 3262, "max_hz": 3919 }
     ],
     "wavelet_config": {
       "wavelet": "sym4",
