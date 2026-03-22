@@ -189,6 +189,7 @@ export default function App() {
   const [outputAI,           setOutputAI]           = useState(null);
   const [waveletType,        setWaveletType]        = useState('db4');
   const [waveletLevels,      setWaveletLevels]      = useState(4);
+  const [humanWaveletPreset, setHumanWaveletPreset] = useState(null);
   const [fftBandsOpen,       setFftBandsOpen]       = useState(true);
   const [waveletBandsOpen,   setWaveletBandsOpen]   = useState(true);
 
@@ -305,7 +306,7 @@ export default function App() {
   const applyResult = (result) => {
     setInputSignal(new Float32Array(result.input_audio));
     setOutputSignal(new Float32Array(result.output_audio));
-    setSampleRate(result.sample_rate);
+    setSampleRate(result.preview_sample_rate || result.sample_rate);
     // ECG BPM calculation is performed in EcgAnalysis; clear previous ECG analysis here
     setEcgAnalysis({ bpm: null, type: null });
     setAiStatusMessage(result.ai_error || null);
@@ -513,12 +514,65 @@ if (result.ai_analysis && currentMode === 'musical') {
     }
   };
 
+  const applyHumanPreset = async (preset) => {
+    const presets = {
+      male: {
+        approx: 1.0, level_5: 0.1, level_4: 0.1,
+        level_3: 0.1, level_2: 0.3, level_1: 0.1
+      },
+      female: {
+        approx: 0.0, level_5: 2.0, level_4: 2.0,
+        level_3: 0.3, level_2: 0.0, level_1: 0.0
+      },
+      child: {
+        approx: 0.0, level_5: 0.0, level_4: 0.3,
+        level_3: 2.0, level_2: 2.0, level_1: 2.0
+      },
+      adults: {
+        approx: 1.5, level_5: 1.5, level_4: 1.5,
+        level_3: 0.1, level_2: 0.0, level_1: 0.0
+      },
+    };
+    const newWeights = presets[preset];
+    setWaveletWeights(newWeights);
+    setHumanWaveletPreset(preset);
+    setWaveletPendingChanges(false);
+
+    if (!file) return;
+
+    try {
+      requestAbortController.current?.abort();
+      requestAbortController.current = new AbortController();
+      setLoading(true); setError(null);
+      setOutputAI(null);
+      setAiSpectrogram(null);
+      setAiStatusMessage(null);
+      const fw = { ...weights };
+      const result = await uploadAndTransform(
+        file,
+        currentMode,
+        fw,
+        bands,
+        newWeights,
+        waveletType,
+        waveletLevels,
+        useAiModel,
+        requestAbortController.current.signal
+      );
+      applyResult(result);
+    } catch (err) {
+      if (err.name !== 'AbortError') setError(err.message);
+      setLoading(false);
+    }
+  };
+
   const handleModeChange = async (newMode) => {
     const hadFile = !!file;
     setCurrentMode(newMode);
     setWeights({});
     setEcgAnalysis({ bpm: null, type: null });
     setWaveletWeights({});
+    setHumanWaveletPreset(null);
     setOutputAI(null);
     setUseAiModel(newMode === 'musical');
     setAiStatusMessage(null);
@@ -788,6 +842,38 @@ if (result.ai_analysis && currentMode === 'musical') {
                     : 'Choose wavelet and levels'}
                 </span>
               </div>
+
+              {currentMode === 'human' && (
+                <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-dim)', alignSelf: 'center' }}>
+                    Wavelet preset:
+                  </span>
+                  {['male', 'female', 'child', 'adults'].map(preset => (
+                    <button
+                      key={preset}
+                      type="button"
+                      className={`btn ${humanWaveletPreset === preset ? 'btn-primary' : ''}`}
+                      onClick={() => applyHumanPreset(preset)}
+                      style={{ fontSize: 12, padding: '4px 12px', textTransform: 'capitalize' }}
+                    >
+                      {preset === 'male'   ? 'Isolate Male'   :
+                       preset === 'female' ? 'Isolate Female' :
+                       preset === 'child'  ? 'Isolate Child'  :
+                                             'Isolate Adults'}
+                    </button>
+                  ))}
+                  {humanWaveletPreset && (
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => { setWaveletWeights({}); setHumanWaveletPreset(null); }}
+                      style={{ fontSize: 12, padding: '4px 12px' }}
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* Collapsible Wavelet Bands */}
               <div className="collapsible-panel">
