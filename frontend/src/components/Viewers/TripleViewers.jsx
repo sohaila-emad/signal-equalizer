@@ -1,5 +1,6 @@
 import CineViewer from './CineViewer';
 import EcgCineViewer from './EcgCineViewer';
+import EcgBandViewer from '../ECG/EcgBandViewer';
 import './TripleViewers.css';
 
 /**
@@ -13,9 +14,11 @@ export default function TripleViewers({
   aiOutput,
   showAi,
   sampleRate,
-  viewState,    // <--- Use the prop from App.js
-  setViewState, // <--- Use the prop from App.js
-  isEcgMode = false
+  viewState,
+  setViewState,
+  isEcgMode = false,
+  ecgBandSignals = null,
+  ecgWeights = null,
 }) {
   // This handler ensures that if one viewer changes (zoom/pan/play), 
   // they ALL update simultaneously.
@@ -26,6 +29,7 @@ export default function TripleViewers({
   const Viewer = isEcgMode ? EcgCineViewer : CineViewer;
 
   return (
+    <>
     <div className="triple-viewers-stack">
       <Viewer
         signal={inputSignal}
@@ -72,5 +76,14 @@ export default function TripleViewers({
         )
       )}
     </div>
+
+    {isEcgMode && ecgBandSignals && (
+      <EcgBandViewer
+        bandSignals={ecgBandSignals}
+        weights={ecgWeights || {}}
+        sampleRate={sampleRate}
+      />
+    )}
+    </>
   );
 }

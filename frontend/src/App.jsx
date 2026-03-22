@@ -207,6 +207,7 @@ export default function App() {
   const [useAiModel,         setUseAiModel]         = useState(false);
   const [aiStatusMessage,    setAiStatusMessage]    = useState(null);
   const [ecgAnalysis,        setEcgAnalysis]        = useState({ bpm: null, type: null });
+  const [ecgBandSignals,     setEcgBandSignals]     = useState(null); // { norm, mi, sttc, cd } isolated waveforms
 
   const [freqRange, setFreqRange] = useState({ min: 0, max: 5000 });
   const [visFreq,   setVisFreq]   = useState({ min: 0, max: 5000 });
@@ -220,6 +221,7 @@ export default function App() {
   const requestAbortController = useRef(null);
   const isInternalUpdate = useRef(false);
   const aiRetryAttemptedRef = useRef(false);
+  const currentModeRef = useRef('generic');  // always mirrors currentMode, safe inside closures
   const initialLoadDone = useRef(false);
 
   // Separate pending states for FFT and Wavelet
@@ -305,6 +307,15 @@ export default function App() {
   const applyResult = (result) => {
     setInputSignal(new Float32Array(result.input_audio));
     setOutputSignal(new Float32Array(result.output_audio));
+    if (result.ecg_band_signals && Object.keys(result.ecg_band_signals).length > 0) {
+      const converted = {};
+      for (const [k, v] of Object.entries(result.ecg_band_signals)) {
+        converted[k] = new Float32Array(v);
+      }
+      setEcgBandSignals(converted);
+    } else {
+      setEcgBandSignals(null);
+    }
     setSampleRate(result.sample_rate);
     // ECG BPM calculation is performed in EcgAnalysis; clear previous ECG analysis here
     setEcgAnalysis({ bpm: null, type: null });
@@ -391,16 +402,17 @@ if (result.ai_analysis && currentMode === 'musical') {
       const fw = Object.keys(weights).length > 0 ? weights :
            bands.reduce((acc, b) => ({ ...acc, [b.id]: b.scale || 1.0 }), {});
       if (currentMode === 'generic') bandsArg.forEach((b) => { if (b.id) fw[b.id] = b.scale ?? 1; });
+      const activeMode = currentModeRef.current;
       const result = await uploadAndTransform(
         file,
-        currentMode,
+        activeMode,
         fw,
         bandsArg,
         waveletWeights,
         waveletType,
         waveletLevels,
         useAiModel,
-        requestAbortController.current.signal
+        requestAbortController.current.signal,
       );
       applyResult(result);
       setFftPendingChanges(false);
@@ -426,16 +438,17 @@ if (result.ai_analysis && currentMode === 'musical') {
       setAiStatusMessage(null);
       const fw = { ...weights };
       if (currentMode === 'generic') bands.forEach((b) => { if (b.id) fw[b.id] = b.scale ?? 1; });
+      const activeMode = currentModeRef.current;
       const result = await uploadAndTransform(
         file,
-        currentMode,
+        activeMode,
         fw,
         bands,
         waveletWeights,
         waveletType,
         waveletLevels,
-        currentMode === 'musical' ? true : useAiModel,
-        requestAbortController.current.signal
+        activeMode === 'musical' ? true : useAiModel,
+        requestAbortController.current.signal,
       );
       applyResult(result);
       setFftPendingChanges(false);
@@ -513,8 +526,12 @@ if (result.ai_analysis && currentMode === 'musical') {
     }
   };
 
+  // Keep ref in sync so closures (handleApply, useEffect) always see the live mode
+  useEffect(() => { currentModeRef.current = currentMode; }, [currentMode]);
+
   const handleModeChange = async (newMode) => {
     const hadFile = !!file;
+    currentModeRef.current = newMode;   // update ref immediately, before setState batches
     setCurrentMode(newMode);
     setWeights({});
     setEcgAnalysis({ bpm: null, type: null });
@@ -592,9 +609,16 @@ if (result.ai_analysis && currentMode === 'musical') {
   };
 
   const handleEcgAnalysisComplete = (wavFile, suggestedBands, suggestedWaveletWeights) => {
+    // Ensure mode ref is 'ecg' BEFORE setFile triggers the auto-apply useEffect.
+    // Without this, handleApply reads currentModeRef.current === 'generic' and
+    // the backend receives mode=generic, bypassing the ECG clinical-band path.
+    currentModeRef.current = 'ecg';
+    setCurrentMode('ecg');
     setFile(wavFile);
     if (Array.isArray(suggestedBands) && suggestedBands.length > 0) {
       setBands(suggestedBands);
+      // Seed Gaussian bands from Grad-CAM suggested bands
+      // Convert min/max range → Gaussian center + sigma
     }
     if (suggestedWaveletWeights && typeof suggestedWaveletWeights === 'object') {
       setWaveletWeights(suggestedWaveletWeights);
@@ -809,27 +833,24 @@ if (result.ai_analysis && currentMode === 'musical') {
               </div>
 
               {/* Collapsible FFT Bands */}
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginTop: 12 }}>
-                <div className="collapsible-panel" style={{ flex: 1 }}>
-                  <button type="button" onClick={() => setFftBandsOpen(p => !p)} style={{ fontWeight: 600, marginBottom: 4 }}>
-                    FFT Bands {fftBandsOpen ? '^' : 'v'}
-                  </button>
-                  {fftBandsOpen && (
-                    <SliderPanel
-                      mode={currentMode}
-                      bands={bands}
-                      onBandsChange={setBands}
-                      weights={weights}
-                      onWeightsChange={setWeights}
-                      isAiMode={useAiModel}
-                      onApply={handleApply}
-                      pendingChanges={fftPendingChanges}
-                      setPendingChanges={setFftPendingChanges}
-                    />
-                  )}
-                </div>
+              <div className="collapsible-panel" style={{ marginTop: 12 }}>
+                <button type="button" onClick={() => setFftBandsOpen(p => !p)} style={{ fontWeight: 600, marginBottom: 4 }}>
+                  FFT Bands {fftBandsOpen ? '^' : 'v'}
+                </button>
+                {fftBandsOpen && (
+                  <SliderPanel
+                    mode={currentMode}
+                    bands={bands}
+                    onBandsChange={setBands}
+                    weights={weights}
+                    onWeightsChange={setWeights}
+                    isAiMode={useAiModel}
+                    onApply={handleApply}
+                    pendingChanges={fftPendingChanges}
+                    setPendingChanges={setFftPendingChanges}
+                  />
+                )}
               </div>
-
 
             </div>
           </div>
@@ -902,6 +923,8 @@ if (result.ai_analysis && currentMode === 'musical') {
                   viewState={viewState}
                   setViewState={setViewState}
                   isEcgMode={currentMode === 'ecg'}
+                  ecgBandSignals={currentMode === 'ecg' ? ecgBandSignals : null}
+                  ecgWeights={currentMode === 'ecg' ? weights : null}
                 />
                 {/* ECG diagnosis panel removed; EcgAnalysis provides its own summary and suggested bands seeds sliders */}
               </div>

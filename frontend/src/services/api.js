@@ -46,7 +46,7 @@ export async function uploadAndTransform(
   wavelet = null,
   waveletLevels = null,
   useAi = false,
-  abortSignal = null
+  abortSignal = null,
 ) {
   const formData = new FormData();
   formData.append('file', file);

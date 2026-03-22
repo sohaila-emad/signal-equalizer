@@ -104,10 +104,30 @@
     "label": "Bioacoustic Analysis",
     "description": "Analyze animal vocalizations across frequency ranges.",
     "bands": [
-      { "id": "dog",  "label": "Dog",  "min_hz": 312,  "max_hz": 1217 },
-      { "id": "cat",  "label": "Cat",  "min_hz": 4716,   "max_hz": 11024 },
-      { "id": "cow",  "label": "Cow",  "min_hz": 11,   "max_hz": 194 },
-      { "id": "bird", "label": "Bird", "min_hz": 2972,  "max_hz": 5900  }
+      {
+        "id": "dog",
+        "label": "Dog",
+        "min_hz": 312,
+        "max_hz": 1217
+      },
+      {
+        "id": "cat",
+        "label": "Cat",
+        "min_hz": 4716,
+        "max_hz": 11024
+      },
+      {
+        "id": "cow",
+        "label": "Cow",
+        "min_hz": 11,
+        "max_hz": 194
+      },
+      {
+        "id": "bird",
+        "label": "Bird",
+        "min_hz": 2972,
+        "max_hz": 5900
+      }
     ],
     "wavelet_config": {
       "wavelet": "db6",
@@ -126,10 +146,30 @@
     "label": "Speech & Voice",
     "description": "Human speech processing and formant isolation.",
     "bands": [
-      { "id": "audio1", "label": "Audio 1", "min_hz": 71, "max_hz": 189},
-      { "id": "audio2", "label": "Audio 2", "min_hz": 413, "max_hz": 1102 },
-      { "id": "audio3", "label": "Audio 3", "min_hz": 65, "max_hz": 172 },
-      { "id": "audio4", "label": "Audio 4", "min_hz": 3262, "max_hz": 3919 }
+      {
+        "id": "audio1",
+        "label": "Audio 1",
+        "min_hz": 71,
+        "max_hz": 189
+      },
+      {
+        "id": "audio2",
+        "label": "Audio 2",
+        "min_hz": 413,
+        "max_hz": 1102
+      },
+      {
+        "id": "audio3",
+        "label": "Audio 3",
+        "min_hz": 65,
+        "max_hz": 172
+      },
+      {
+        "id": "audio4",
+        "label": "Audio 4",
+        "min_hz": 3262,
+        "max_hz": 3919
+      }
     ],
     "wavelet_config": {
       "wavelet": "sym4",
@@ -148,10 +188,30 @@
     "label": "ECG",
     "description": "Upload WFDB ECG record. ECGNet classifies arrhythmia, Grad-CAM highlights ROI, sliders control frequency components.",
     "bands": [
-      { "id": "norm", "label": "NORM",  "min_hz": 0.05, "max_hz": 0.5  },
-      { "id": "mi",   "label": "MI",    "min_hz": 0.5,  "max_hz": 20.0 },
-      { "id": "sttc", "label": "STTC",  "min_hz": 0.5,  "max_hz": 40.0 },
-      { "id": "cd",   "label": "CD",    "min_hz": 5.0,  "max_hz": 40.0 }
+      {
+        "id": "norm",
+        "label": "NORM",
+        "min_hz": 0.05,
+        "max_hz": 2.0
+      },
+      {
+        "id": "mi",
+        "label": "MI",
+        "min_hz": 0.5,
+        "max_hz": 4.0
+      },
+      {
+        "id": "sttc",
+        "label": "STTC",
+        "min_hz": 20.0,
+        "max_hz": 50.0
+      },
+      {
+        "id": "cd",
+        "label": "CD",
+        "min_hz": 8.0,
+        "max_hz": 22.0
+      }
     ],
     "wavelet_config": {
       "wavelet": "db4",

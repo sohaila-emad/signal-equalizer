@@ -370,6 +370,17 @@ def register_routes(app: Flask) -> None:
             max_audio_samples = 100_000
             step = max(1, len(y) // max_audio_samples)
 
+            # ECG mode: also return each band's isolated signal
+            ecg_band_signals = {}
+            if mode == 'ecg':
+                from app.services.equalizer_service import get_ecg_band_signals
+                try:
+                    raw_bands = get_ecg_band_signals(y, float(sr))
+                    # Downsample same as audio
+                    ecg_band_signals = {k: v[::step] for k, v in raw_bands.items()}
+                except Exception as _e:
+                    print(f"[ECG bands] failed: {_e}")
+
             return jsonify({
                 "filename": file.filename,
                 "sample_rate": int(sr),
@@ -381,6 +392,7 @@ def register_routes(app: Flask) -> None:
                 "input_audio": y[::step].tolist(),
                 "output_audio": y_eq[::step].tolist(),
                 "output_wavelet_audio": y_wavelet[::step].tolist(),
+                "ecg_band_signals": ecg_band_signals,
                 "output_ai": y_ai[::step].tolist() if y_ai is not None else None,
                 "ai_analysis": ai_analysis,  # <--- INJECTED: Sends detected min/max to React
                 "ai_error": ai_error,
