@@ -143,8 +143,6 @@
     }
   },
   "human": {
-    "label": "Speech & Voice",
-    "description": "Human speech processing and formant isolation.",
     "bands": [
       {
         "id": "audio1",
@@ -175,15 +173,16 @@
       "wavelet": "sym4",
       "levels": 5,
       "band_labels": {
-        "level_1": "Sibilance (s/sh/f)",
-        "level_2": "Upper Formants",
-        "level_3": "Lower Formants",
-        "level_4": "Fundamental Pitch",
-        "level_5": "Chest Resonance",
-        "approx": "Sub-vocal/Baseline"
+        "level_1": "Child Brightness (2756–5512Hz)",
+        "level_2": "Child Harmonics (1378–2756Hz)",
+        "level_3": "Child & Female Formants (689–1378Hz)",
+        "level_4": "Female Harmonics (345–689Hz)",
+        "level_5": "Female Fundamental (172–345Hz)",
+        "approx":  "Male Fundamental (0–172Hz)"
       }
     }
   },
+  
   "ecg": {
     "label": "ECG",
     "description": "Upload WFDB ECG record. ECGNet classifies arrhythmia, Grad-CAM highlights ROI, sliders control frequency components.",

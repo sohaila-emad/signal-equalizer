@@ -16,10 +16,10 @@ torchmetrics
 
 # PyTorch + audio (CUDA 11.8) — used by both DPRNN and AudioSep
 --extra-index-url https://download.pytorch.org/whl/cu118
-torch==2.0.1
-torchaudio==2.0.2
-torchvision==0.15.2
-pytorch-lightning
+# torch==2.0.1
+# torchaudio==2.0.2
+# torchvision==0.15.2
+# pytorch-lightning
 lightning-utilities
 
 # AudioSep dependencies
