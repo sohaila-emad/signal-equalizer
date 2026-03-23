@@ -143,31 +143,13 @@
     }
   },
   "human": {
+    "label": "Speech & Voice",
+    "description": "Human speech processing and voice separation.",
     "bands": [
-      {
-        "id": "audio1",
-        "label": "Audio 1",
-        "min_hz": 71,
-        "max_hz": 189
-      },
-      {
-        "id": "audio2",
-        "label": "Audio 2",
-        "min_hz": 413,
-        "max_hz": 1102
-      },
-      {
-        "id": "audio3",
-        "label": "Audio 3",
-        "min_hz": 65,
-        "max_hz": 172
-      },
-      {
-        "id": "audio4",
-        "label": "Audio 4",
-        "min_hz": 3262,
-        "max_hz": 3919
-      }
+      { "id": "man", "label": "Man", "min_hz": 2112, "max_hz": 5633 },
+      { "id": "woman", "label": "Woman", "min_hz": 556, "max_hz": 1481 },
+      { "id": "child", "label": "Child", "min_hz": 1658, "max_hz": 1906 },
+      { "id": "elderly", "label": "Elderly", "min_hz": 7763, "max_hz": 10928 }
     ],
     "wavelet_config": {
       "wavelet": "sym4",
