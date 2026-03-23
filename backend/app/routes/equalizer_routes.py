@@ -350,7 +350,7 @@ def register_routes(app: Flask) -> None:
             if mode == "musical":
                 wavelet_input = y_ai if y_ai is not None else y_eq
 
-            y_wavelet = apply_wavelet_equalizer(wavelet_input, float(sr), wavelet, wavelet_levels, wavelet_weights)
+            y_wavelet = apply_wavelet_equalizer(wavelet_input, float(sr), wavelet, wavelet_levels, wavelet_weights, mode)
 
             # 4. Math Transforms
             in_f, in_t, in_S = compute_spectrogram(y, float(sr))
@@ -364,6 +364,7 @@ def register_routes(app: Flask) -> None:
                 wavelet,
                 wavelet_levels,
                 wavelet_band_labels,
+                mode,
             )
 
             # 5. Build Response

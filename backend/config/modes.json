@@ -132,13 +132,12 @@
     "wavelet_config": {
       "wavelet": "db6",
       "levels": 5,
+      "use_wiener": true,
       "band_labels": {
-        "level_1": "High Frequency Calls",
-        "level_2": "Mid-High Harmonics",
-        "level_3": "Body Resonance",
-        "level_4": "Low-Mid Tones",
-        "level_5": "Fundamental Frequency",
-        "approx": "Infrasound/Ambient"
+        "dog": "Dog Voice",
+        "cat": "Cat Voice",
+        "cow": "Cow Voice",
+        "bird": "Bird Voice"
       }
     }
   },
@@ -154,13 +153,12 @@
     "wavelet_config": {
       "wavelet": "sym4",
       "levels": 5,
+      "use_wiener": true,
       "band_labels": {
-        "level_1": "Child Brightness (2756–5512Hz)",
-        "level_2": "Child Harmonics (1378–2756Hz)",
-        "level_3": "Child & Female Formants (689–1378Hz)",
-        "level_4": "Female Harmonics (345–689Hz)",
-        "level_5": "Female Fundamental (172–345Hz)",
-        "approx":  "Male Fundamental (0–172Hz)"
+        "man": "Man Voice",
+        "woman": "Woman Voice",
+        "child": "Child Voice",
+        "elderly": "Elderly Voice"
       }
     }
   },

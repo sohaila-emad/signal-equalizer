@@ -530,20 +530,16 @@ if (result.ai_analysis && currentMode === 'musical') {
   const applyHumanPreset = async (preset) => {
     const presets = {
       male: {
-        approx: 1.0, level_5: 0.1, level_4: 0.1,
-        level_3: 0.1, level_2: 0.3, level_1: 0.1
+        man: 2.0, woman: 0.1, child: 0.1, elderly: 0.3
       },
       female: {
-        approx: 0.0, level_5: 2.0, level_4: 2.0,
-        level_3: 0.3, level_2: 0.0, level_1: 0.0
+        man: 0.1, woman: 2.0, child: 0.3, elderly: 0.1
       },
       child: {
-        approx: 0.0, level_5: 0.0, level_4: 0.3,
-        level_3: 2.0, level_2: 2.0, level_1: 2.0
+        man: 0.1, woman: 0.3, child: 2.0, elderly: 0.1
       },
       adults: {
-        approx: 1.5, level_5: 1.5, level_4: 1.5,
-        level_3: 0.1, level_2: 0.0, level_1: 0.0
+        man: 1.5, woman: 1.5, child: 0.1, elderly: 1.5
       },
     };
     const newWeights = presets[preset];

@@ -230,6 +230,74 @@ if os.path.exists(_human_path):
     except Exception as e:
         print(f"[WARNING] Failed to load human Wiener data: {e}")
 
+# Human wavelet data containers
+HUMAN_WAVELET_MASKS = {}      # Dict[source_name, Dict[level_idx, mask_array]]
+HUMAN_WAVELET_NAMES = []
+HUMAN_WAVELET_FINGERPRINTS = {}
+HUMAN_WAVELET_PARAMS = {}
+
+# Load human wavelet Wiener data
+_human_wavelet_path = os.path.join(_DATA_DIR, 'wiener_wavelet_human.npz')
+if os.path.exists(_human_wavelet_path):
+    try:
+        _data = np.load(_human_wavelet_path, allow_pickle=True)
+        HUMAN_WAVELET_NAMES = list(_data['source_names'])
+        HUMAN_WAVELET_PARAMS = {
+            'wavelet': str(_data['wavelet'][0]),
+            'levels': int(_data['levels'][0]),
+            'alpha': float(_data['alpha'][0]),
+            'sample_rate': int(_data['sample_rate'][0]),
+            'signal_length': int(_data['signal_length'][0]),
+            'level_labels': list(_data['level_labels']),
+        }
+        # Load masks for each source and level
+        for name in HUMAN_WAVELET_NAMES:
+            HUMAN_WAVELET_MASKS[name] = {}
+            for lvl in range(6):  # 6 levels: approx + 5 details
+                key = f'mask_{name}_{lvl}'
+                if key in _data:
+                    HUMAN_WAVELET_MASKS[name][lvl] = _data[key]
+            fp_key = f'fingerprint_{name}'
+            if fp_key in _data:
+                HUMAN_WAVELET_FINGERPRINTS[name] = _data[fp_key]
+        print(f"[INFO] Loaded human wavelet masks: {HUMAN_WAVELET_NAMES}")
+    except Exception as e:
+        print(f"[WARNING] Failed to load human wavelet data: {e}")
+
+# Animal wavelet data containers
+ANIMAL_WAVELET_MASKS = {}      # Dict[source_name, Dict[level_idx, mask_array]]
+ANIMAL_WAVELET_NAMES = []
+ANIMAL_WAVELET_FINGERPRINTS = {}
+ANIMAL_WAVELET_PARAMS = {}
+
+# Load animal wavelet Wiener data
+_animal_wavelet_path = os.path.join(_DATA_DIR, 'wiener_wavelet_animal.npz')
+if os.path.exists(_animal_wavelet_path):
+    try:
+        _data = np.load(_animal_wavelet_path, allow_pickle=True)
+        ANIMAL_WAVELET_NAMES = list(_data['source_names'])
+        ANIMAL_WAVELET_PARAMS = {
+            'wavelet': str(_data['wavelet'][0]),
+            'levels': int(_data['levels'][0]),
+            'alpha': float(_data['alpha'][0]),
+            'sample_rate': int(_data['sample_rate'][0]),
+            'signal_length': int(_data['signal_length'][0]),
+            'level_labels': list(_data['level_labels']),
+        }
+        # Load masks for each source and level
+        for name in ANIMAL_WAVELET_NAMES:
+            ANIMAL_WAVELET_MASKS[name] = {}
+            for lvl in range(6):  # 6 levels: approx + 5 details
+                key = f'mask_{name}_{lvl}'
+                if key in _data:
+                    ANIMAL_WAVELET_MASKS[name][lvl] = _data[key]
+            fp_key = f'fingerprint_{name}'
+            if fp_key in _data:
+                ANIMAL_WAVELET_FINGERPRINTS[name] = _data[fp_key]
+        print(f"[INFO] Loaded animal wavelet masks: {ANIMAL_WAVELET_NAMES}")
+    except Exception as e:
+        print(f"[WARNING] Failed to load animal wavelet data: {e}")
+
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
@@ -424,13 +492,46 @@ def _apply_fft_eq(
 
 # ── Wavelet equalizer ─────────────────────────────────────────────────────────
 
+# Human wavelet ID map (matching FFT ID map)
+HUMAN_WAVELET_ID_MAP = {
+    'man': 'Man',
+    'woman': 'Woman',
+    'child': 'Child',
+    'elderly': 'Elderly',
+}
+
+# Animal wavelet ID map (matching FFT ID map)
+ANIMAL_WAVELET_ID_MAP = {
+    'dog': 'Dog',
+    'cow': 'Cow',
+    'bird': 'Bird',
+    'cat': 'Cat',
+}
+
+
 def apply_wavelet_equalizer(
     signal:          np.ndarray,
     sample_rate:     float,
     wavelet:         str,
     levels:          int,
     wavelet_weights: Dict[str, float],
+    mode:            str = "generic",
 ) -> np.ndarray:
+    # Human mode with Wiener wavelet masks
+    if mode == 'human' and HUMAN_WAVELET_MASKS:
+        return _apply_wavelet_wiener(
+            signal, sample_rate, wavelet_weights,
+            HUMAN_WAVELET_MASKS, HUMAN_WAVELET_NAMES, HUMAN_WAVELET_PARAMS, HUMAN_WAVELET_ID_MAP
+        )
+
+    # Animal mode with Wiener wavelet masks
+    if mode == 'animal' and ANIMAL_WAVELET_MASKS:
+        return _apply_wavelet_wiener(
+            signal, sample_rate, wavelet_weights,
+            ANIMAL_WAVELET_MASKS, ANIMAL_WAVELET_NAMES, ANIMAL_WAVELET_PARAMS, ANIMAL_WAVELET_ID_MAP
+        )
+
+    # Generic wavelet equalization
     max_level = pywt.dwt_max_level(len(signal), pywt.Wavelet(wavelet).dec_len)
     levels    = max(1, min(levels, max_level))
     coeffs    = pywt.wavedec(signal, wavelet, level=levels)
@@ -439,3 +540,86 @@ def apply_wavelet_equalizer(
         key    = 'approx' if i == 0 else f'level_{levels - i + 1}'
         scaled.append(arr * float(wavelet_weights.get(key, 1.0)))
     return pywt.waverec(scaled, wavelet)[:len(signal)].astype(np.float32)
+
+
+def _apply_wavelet_wiener(
+    signal:          np.ndarray,
+    sample_rate:     float,
+    wavelet_weights: Dict[str, float],
+    masks_data:      Dict[str, Dict[int, np.ndarray]],
+    source_names:    List[str],
+    params:          Dict[str, Any],
+    id_map:          Dict[str, str],
+) -> np.ndarray:
+    """Apply Wiener soft-mask equalization in wavelet domain."""
+    try:
+        import librosa
+    except ImportError:
+        return signal.astype(np.float32)
+
+    stored_wavelet = params.get('wavelet', 'sym4')
+    stored_levels = params.get('levels', 5)
+    stored_sr = params.get('sample_rate', 11025)
+
+    original_sr = int(sample_rate)
+    original_len = len(signal)
+
+    # Resample to stored sample rate if needed
+    if original_sr != stored_sr:
+        signal = librosa.resample(signal.astype(np.float32), orig_sr=original_sr, target_sr=stored_sr)
+
+    # Decompose signal using stored wavelet config
+    max_level = pywt.dwt_max_level(len(signal), pywt.Wavelet(stored_wavelet).dec_len)
+    actual_levels = min(stored_levels, max_level)
+    coeffs = pywt.wavedec(signal.astype(np.float64), stored_wavelet, level=actual_levels)
+
+    # Build gain multiplier for each level using Wiener soft-masks
+    n_sources = len(source_names)
+    gains_lin = np.ones(n_sources)
+
+    # Map user band IDs to source indices
+    for band_id, weight in wavelet_weights.items():
+        mapped_name = id_map.get(band_id, band_id)
+        if mapped_name in source_names:
+            idx = source_names.index(mapped_name)
+            gains_lin[idx] = float(weight)
+
+    # Apply soft-mask equalization to each wavelet level
+    scaled_coeffs = []
+    for lvl_idx, coeff in enumerate(coeffs):
+        coeff_len = len(coeff)
+        # Build combined gain for this level from all source masks
+        combined_gain = np.zeros(coeff_len, dtype=np.float64)
+
+        for src_idx, src_name in enumerate(source_names):
+            if src_name in masks_data and lvl_idx in masks_data[src_name]:
+                mask = masks_data[src_name][lvl_idx]
+                # Interpolate mask to match coefficient length
+                if len(mask) != coeff_len:
+                    mask = np.interp(
+                        np.linspace(0, 1, coeff_len),
+                        np.linspace(0, 1, len(mask)),
+                        mask
+                    )
+                combined_gain += mask * gains_lin[src_idx]
+
+        # Apply gain (default to 1.0 if no masks matched)
+        if combined_gain.max() < 1e-9:
+            combined_gain = np.ones(coeff_len)
+
+        scaled_coeffs.append(coeff * combined_gain)
+
+    # Reconstruct signal
+    y_out = pywt.waverec(scaled_coeffs, stored_wavelet)
+
+    # Resample back to original sample rate if needed
+    if original_sr != stored_sr:
+        y_out = librosa.resample(y_out.astype(np.float32), orig_sr=stored_sr, target_sr=original_sr)
+
+    # Match original length
+    if len(y_out) > original_len:
+        y_out = y_out[:original_len]
+    elif len(y_out) < original_len:
+        y_out = np.pad(y_out, (0, original_len - len(y_out)))
+
+    return _soft_clip(y_out).astype(np.float32)

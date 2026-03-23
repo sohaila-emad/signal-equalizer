@@ -87,15 +87,55 @@ def compute_wavelet_level_ranges(
     wavelet: str,
     levels: int,
     band_labels: Dict[str, str] | None = None,
+    mode: str = "generic",
 ) -> List[Dict[str, Any]]:
     """
     Returns a list of dicts for each DWT level with id, label, min_hz, max_hz.
+
+    For human/animal modes with Wiener masks, returns 4 source-based bands.
+    For other modes, returns level-based bands:
     min_hz = sample_rate / 2**(level+1)
     max_hz = sample_rate / 2**level
     Level 1 = highest frequency detail coefficients.
     """
     bands = []
     band_labels = band_labels or {}
+
+    # Human mode with Wiener wavelet masks - return source-based bands
+    if mode == "human":
+        human_sources = [
+            ("man", "Man Voice", 85, 180),
+            ("woman", "Woman Voice", 165, 255),
+            ("child", "Child Voice", 250, 400),
+            ("elderly", "Elderly Voice", 100, 200),
+        ]
+        for src_id, default_label, min_hz, max_hz in human_sources:
+            bands.append({
+                "id": src_id,
+                "label": band_labels.get(src_id, default_label),
+                "min_hz": float(min_hz),
+                "max_hz": float(max_hz),
+            })
+        return bands
+
+    # Animal mode with Wiener wavelet masks - return source-based bands
+    if mode == "animal":
+        animal_sources = [
+            ("dog", "Dog Voice", 67, 1000),
+            ("cat", "Cat Voice", 45, 1500),
+            ("cow", "Cow Voice", 20, 500),
+            ("bird", "Bird Voice", 1000, 8000),
+        ]
+        for src_id, default_label, min_hz, max_hz in animal_sources:
+            bands.append({
+                "id": src_id,
+                "label": band_labels.get(src_id, default_label),
+                "min_hz": float(min_hz),
+                "max_hz": float(max_hz),
+            })
+        return bands
+
+    # Generic mode - level-based bands
     for level in range(1, levels + 1):
         min_hz = sample_rate / (2 ** (level + 1))
         max_hz = sample_rate / (2 ** level)
