@@ -35,6 +35,7 @@ export function encodeWavBlob(samples, sampleRate) {
  * @param {Object} waveletWeights - Wavelet level ID to gain mapping (e.g., { "level_1": 0.5 })
  * @param {string} wavelet - Wavelet name (for generic mode override)
  * @param {number} waveletLevels - Number of DWT levels (for generic mode override)
+ * @param {string} maskMode - Mask mode: "stft" (time-frequency) or "fft" (frequency-only)
  * @returns {Promise<Object>} - Processed audio data from backend
  */
 export async function uploadAndTransform(
@@ -47,6 +48,7 @@ export async function uploadAndTransform(
   waveletLevels = null,
   useAi = false,
   abortSignal = null,
+  maskMode = 'stft',
 ) {
   const formData = new FormData();
   formData.append('file', file);
@@ -57,6 +59,7 @@ export async function uploadAndTransform(
   }
   formData.append('use_ai', useAi ? '1' : '0');
   formData.append('wavelet_weights', JSON.stringify(waveletWeights || {}));
+  formData.append('mask_mode', maskMode);
   if (mode === 'generic' && wavelet) {
     formData.append('wavelet', wavelet);
   }

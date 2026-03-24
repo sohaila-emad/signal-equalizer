@@ -326,6 +326,7 @@ def apply_equalizer(
     bands:       List[Dict[str, Any]],
     weights:     Dict[str, float],
     mode:        str = "generic",
+    mask_mode:   str = "stft",
 ) -> np.ndarray:
     if not bands:
         return signal
@@ -354,11 +355,21 @@ def apply_equalizer(
     )
 
     if use_animal_softmask:
+        if str(mask_mode).lower() == "fft":
+            return _apply_frequency_mask_eq(
+                signal, sample_rate, bands, weights,
+                ANIMAL_MASKS, ANIMAL_NAMES, ANIMAL_STFT_PARAMS, ANIMAL_ID_MAP
+            )
         return _apply_softmask_eq(
             signal, sample_rate, bands, weights,
             ANIMAL_MASKS, ANIMAL_NAMES, ANIMAL_STFT_PARAMS, ANIMAL_ID_MAP
         )
     elif use_human_softmask:
+        if str(mask_mode).lower() == "fft":
+            return _apply_frequency_mask_eq(
+                signal, sample_rate, bands, weights,
+                HUMAN_MASKS, HUMAN_NAMES, HUMAN_STFT_PARAMS, HUMAN_ID_MAP
+            )
         return _apply_softmask_eq(
             signal, sample_rate, bands, weights,
             HUMAN_MASKS, HUMAN_NAMES, HUMAN_STFT_PARAMS, HUMAN_ID_MAP
@@ -466,6 +477,93 @@ def _apply_softmask_eq(
     return _soft_clip(y_out).astype(np.float32)
 
 
+def _apply_frequency_mask_eq(
+    signal:       np.ndarray,
+    sample_rate:  float,
+    bands:        List[Dict[str, Any]],
+    weights:      Dict[str, float],
+    masks_data:   np.ndarray,
+    source_names: List[str],
+    stft_params:  Dict[str, int],
+    id_map:       Dict[str, str],
+) -> np.ndarray:
+    """Frequency-only masking by collapsing source STFT masks over time."""
+    n_fft = stft_params['n_fft']
+    hop_length = stft_params['hop_length']
+    stored_sr = stft_params['sample_rate']
+
+    original_sr = int(sample_rate)
+    original_len = len(signal)
+
+    if original_sr != stored_sr:
+        signal = librosa.resample(signal, orig_sr=original_sr, target_sr=stored_sr)
+
+    # Step 1: STFT using the same parameters as soft-mask mode.
+    D = librosa.stft(signal, n_fft=n_fft, hop_length=hop_length)
+    n_freq_bins, n_time_frames = D.shape
+
+    # Match mask time resolution to current STFT frame count.
+    masks = masks_data.copy()
+    if masks.shape[2] != n_time_frames:
+        from scipy.ndimage import zoom
+        masks_interp = np.zeros((masks.shape[0], masks.shape[1], n_time_frames), dtype=np.float64)
+        for i in range(masks.shape[0]):
+            masks_interp[i] = zoom(masks[i], (1.0, n_time_frames / masks.shape[2]), order=1)
+        masks = masks_interp
+
+    if masks.shape[1] != n_freq_bins:
+        from scipy.ndimage import zoom
+        resized = np.zeros((masks.shape[0], n_freq_bins, masks.shape[2]), dtype=np.float64)
+        for i in range(masks.shape[0]):
+            resized[i] = zoom(masks[i], (n_freq_bins / masks.shape[1], 1.0), order=1)
+        masks = resized
+
+    # Step 2: Collapse to frequency-only masks using energy weighting.
+    power = np.abs(D) ** 2  # (f, t)
+    denom = np.sum(power, axis=1) + 1e-10
+
+    n_sources = len(source_names)
+    M_i_f = np.zeros((n_sources, n_freq_bins), dtype=np.float64)
+
+    for src_idx in range(min(n_sources, masks.shape[0])):
+        M_i_f[src_idx] = np.sum(masks[src_idx] * power, axis=1) / denom
+
+    # Step 3: Normalize across sources so each frequency bin sums to ~1.
+    M_sum = np.sum(M_i_f, axis=0, keepdims=True)
+    M_norm = M_i_f / (M_sum + 1e-10)
+
+    # Step 4: Build per-source gains from UI band weights.
+    gains_lin = np.ones(n_sources, dtype=np.float64)
+    for band in bands:
+        band_id = band.get("id")
+        mapped_name = id_map.get(band_id, band_id)
+        if mapped_name in source_names:
+            idx = source_names.index(mapped_name)
+            gains_lin[idx] = float(weights.get(band_id, 1.0))
+
+    # Step 5: Final frequency gain from weighted source competition.
+    gain_f = np.sum(gains_lin[:, None] * M_norm, axis=0)
+
+    # Step 6: Apply in FFT domain.
+    N = len(signal)
+    spectrum = np.fft.rfft(signal)
+    freqs = np.fft.rfftfreq(N, d=1 / stored_sr)
+
+    gain_interp = np.interp(freqs, np.linspace(0, stored_sr / 2, len(gain_f)), gain_f)
+
+    eq_spectrum = spectrum * gain_interp
+    output = np.fft.irfft(eq_spectrum, n=N)
+
+    if original_sr != stored_sr:
+        output = librosa.resample(output, orig_sr=stored_sr, target_sr=original_sr)
+        if len(output) > original_len:
+            output = output[:original_len]
+        elif len(output) < original_len:
+            output = np.pad(output, (0, original_len - len(output)))
+
+    return _soft_clip(output.astype(np.float32))
+
+
 def _apply_fft_eq(
     signal:      np.ndarray,
     sample_rate: float,
@@ -541,19 +639,22 @@ def apply_wavelet_equalizer(
     levels:          int,
     wavelet_weights: Dict[str, float],
     mode:            str = "generic",
+    mask_mode:       str = "stft",
 ) -> np.ndarray:
     # Human mode with Wiener wavelet masks
     if mode == 'human' and HUMAN_WAVELET_MASKS:
         return _apply_wavelet_wiener(
             signal, sample_rate, wavelet_weights,
-            HUMAN_WAVELET_MASKS, HUMAN_WAVELET_NAMES, HUMAN_WAVELET_PARAMS, HUMAN_WAVELET_ID_MAP
+            HUMAN_WAVELET_MASKS, HUMAN_WAVELET_NAMES, HUMAN_WAVELET_PARAMS, HUMAN_WAVELET_ID_MAP,
+            mask_mode=mask_mode
         )
 
     # Animal mode with Wiener wavelet masks
     if mode == 'animal' and ANIMAL_WAVELET_MASKS:
         return _apply_wavelet_wiener(
             signal, sample_rate, wavelet_weights,
-            ANIMAL_WAVELET_MASKS, ANIMAL_WAVELET_NAMES, ANIMAL_WAVELET_PARAMS, ANIMAL_WAVELET_ID_MAP
+            ANIMAL_WAVELET_MASKS, ANIMAL_WAVELET_NAMES, ANIMAL_WAVELET_PARAMS, ANIMAL_WAVELET_ID_MAP,
+            mask_mode=mask_mode
         )
 
     # Generic wavelet equalization
@@ -575,8 +676,19 @@ def _apply_wavelet_wiener(
     source_names:    List[str],
     params:          Dict[str, Any],
     id_map:          Dict[str, str],
+    mask_mode:       str = "stft",
 ) -> np.ndarray:
-    """Apply Wiener soft-mask equalization in wavelet domain."""
+    """Apply Wiener soft-mask equalization in wavelet domain.
+    
+    Args:
+        mask_mode: "stft" for time-frequency masking (existing), "fft" for frequency-only masking (new)
+    """
+    if mask_mode == "fft":
+        return _apply_frequency_mask_eq_wavelet(
+            signal, sample_rate, wavelet_weights, masks_data, source_names, params, id_map
+        )
+    
+    # Default STFT-based wavelet Wiener masking
     try:
         import librosa
     except ImportError:
@@ -648,3 +760,141 @@ def _apply_wavelet_wiener(
         y_out = np.pad(y_out, (0, original_len - len(y_out)))
 
     return _soft_clip(y_out).astype(np.float32)
+
+
+def _apply_frequency_mask_eq_wavelet(
+    signal:          np.ndarray,
+    sample_rate:     float,
+    wavelet_weights: Dict[str, float],
+    masks_data:      Dict[str, Dict[int, np.ndarray]],
+    source_names:    List[str],
+    params:          Dict[str, Any],
+    id_map:          Dict[str, str],
+) -> np.ndarray:
+    """Apply frequency-only masking by collapsing STFT masks over time.
+    
+    This approximates Wiener masking behavior using only FFT magnitude spectrum,
+    providing a less accurate but computationally simpler alternative to STFT masking.
+    
+    Steps:
+    1. Compute STFT (reuse existing params)
+    2. Collapse masks over time using energy-weighted averaging
+    3. Normalize across sources (competition)
+    4. Apply user gains
+    5. Apply in FFT domain via interpolation
+    6. Return soft-clipped result
+    """
+    try:
+        import librosa
+    except ImportError:
+        return signal.astype(np.float32)
+
+    stored_sr = params.get('sample_rate', 11025)
+    n_fft = params.get('n_fft', 2048)
+    hop_length = params.get('hop_length', 512)
+
+    original_sr = int(sample_rate)
+    original_len = len(signal)
+
+    # Resample to stored sample rate if needed
+    if original_sr != stored_sr:
+        signal = librosa.resample(signal.astype(np.float32), orig_sr=original_sr, target_sr=stored_sr)
+
+    # Step 1: Compute STFT
+    D = librosa.stft(signal.astype(np.float32), n_fft=n_fft, hop_length=hop_length)
+    n_freq_bins, n_time_frames = D.shape
+
+    # Step 2: Collapse masks over time using energy-weighted averaging
+    n_sources = len(source_names)
+    power = np.abs(D) ** 2  # shape: (n_freq, n_time)
+    power_sum = np.sum(power, axis=1, keepdims=True) + 1e-10  # (n_freq, 1)
+
+    # M_i_f will have shape (n_sources, n_freq)
+    M_i_f = np.zeros((n_sources, n_freq_bins), dtype=np.float64)
+
+    for src_idx, src_name in enumerate(source_names):
+        if src_name not in masks_data:
+            continue
+
+        # Iterate through frequency levels (keys in masks_data[src_name])
+        for lvl_idx, mask_level in masks_data[src_name].items():
+            # Interpolate mask to match n_freq_bins if needed
+            if len(mask_level) != n_freq_bins:
+                mask_interp = np.interp(
+                    np.linspace(0, 1, n_freq_bins),
+                    np.linspace(0, 1, len(mask_level)),
+                    mask_level
+                )
+            else:
+                mask_interp = mask_level.copy()
+
+            # Energy-weighted average: sum over time, weighted by power at each frequency
+            # M_i(f) = sum_t(mask(f,t) * power(f,t)) / sum_t(power(f,t))
+            if n_time_frames > 0:
+                # Interpolate or tile mask to match n_time_frames if needed
+                if hasattr(masks_data[src_name], '__len__'):
+                    # If masks have time dimension, use it
+                    if len(mask_level.shape) == 2:
+                        # mask_level is (freq, time)
+                        if mask_level.shape[1] != n_time_frames:
+                            from scipy.ndimage import zoom
+                            mask_interp_t = zoom(
+                                mask_level,
+                                (n_freq_bins / len(mask_level), n_time_frames / mask_level.shape[1]),
+                                order=1
+                            )
+                        else:
+                            mask_interp_t = mask_level
+                    else:
+                        # mask_level is 1D (freq only), tile across time
+                        mask_interp_t = np.tile(mask_interp[:, np.newaxis], (1, n_time_frames))
+                else:
+                    mask_interp_t = np.tile(mask_interp[:, np.newaxis], (1, n_time_frames))
+
+                # Ensure correct shape
+                if mask_interp_t.shape != power.shape:
+                    mask_interp_t = np.tile(mask_interp[:, np.newaxis], (1, n_time_frames))
+
+                # Energy-weighted sum
+                weighted_sum = np.sum(mask_interp_t * power, axis=1)
+                M_i_f[src_idx] = weighted_sum / power_sum.ravel()
+
+    # Step 3: Normalize across sources (competition)
+    M_sum = np.sum(M_i_f, axis=0, keepdims=True)
+    M_sum[M_sum < 1e-10] = 1.0  # Avoid division by zero
+    M_norm = M_i_f / M_sum  # shape: (n_sources, n_freq)
+
+    # Step 4: Apply user gains
+    gains_lin = np.ones(n_sources, dtype=np.float64)
+    for band_id, weight in wavelet_weights.items():
+        mapped_name = id_map.get(band_id, band_id)
+        if mapped_name in source_names:
+            idx = source_names.index(mapped_name)
+            gains_lin[idx] = float(weight)
+
+    # Step 5: Build final frequency gain curve
+    gain_f = np.sum(gains_lin[:, np.newaxis] * M_norm, axis=0)  # shape: (n_freq,)
+
+    # Step 6: Apply in FFT domain
+    N = len(signal)
+    spectrum = np.fft.rfft(signal.astype(np.float64))
+    freqs = np.fft.rfftfreq(N, d=1.0 / stored_sr)
+
+    # Interpolate gain_f to match FFT bins
+    gain_interp = np.interp(freqs, np.linspace(0, stored_sr / 2, n_freq_bins), gain_f)
+    
+    eq_spectrum = spectrum * gain_interp
+    output = np.fft.irfft(eq_spectrum, n=N)[:N]
+
+    # Resample back to original sample rate if needed
+    if original_sr != stored_sr:
+        output = librosa.resample(output.astype(np.float32), orig_sr=stored_sr, target_sr=original_sr)
+
+    # Match original length
+    if len(output) > original_len:
+        output = output[:original_len]
+    elif len(output) < original_len:
+        output = np.pad(output, (0, original_len - len(output)))
+
+    return _soft_clip(output.astype(np.float32))
+

@@ -190,6 +190,7 @@ export default function App() {
   const [waveletType,        setWaveletType]        = useState('db4');
   const [waveletLevels,      setWaveletLevels]      = useState(4);
   const [humanWaveletPreset, setHumanWaveletPreset] = useState(null);
+  const [maskMode,           setMaskMode]           = useState('stft'); // 'stft' or 'fft'
   const [fftBandsOpen,       setFftBandsOpen]       = useState(true);
   const [waveletBandsOpen,   setWaveletBandsOpen]   = useState(true);
 
@@ -404,6 +405,7 @@ if (result.ai_analysis && currentMode === 'musical') {
         waveletLevels,
         useAiModel,
         requestAbortController.current.signal,
+        maskMode,
       );
       applyResult(result);
       setFftPendingChanges(false);
@@ -440,6 +442,7 @@ if (result.ai_analysis && currentMode === 'musical') {
         waveletLevels,
         activeMode === 'musical' ? true : useAiModel,
         requestAbortController.current.signal,
+        maskMode,
       );
       applyResult(result);
       setFftPendingChanges(false);
@@ -479,7 +482,7 @@ if (result.ai_analysis && currentMode === 'musical') {
       const result = await uploadAndTransform(
         file, currentMode, fw, bands, waveletWeights,
         newType, waveletLevels,
-        useAiModel, requestAbortController.current.signal
+        useAiModel, requestAbortController.current.signal, maskMode
       );
       applyResult(result);
       setFftPendingChanges(false);
@@ -506,7 +509,7 @@ if (result.ai_analysis && currentMode === 'musical') {
       const result = await uploadAndTransform(
         file, currentMode, fw, bands, waveletWeights,
         waveletType, newLevels,
-        useAiModel, requestAbortController.current.signal
+        useAiModel, requestAbortController.current.signal, maskMode
       );
       applyResult(result);
       setFftPendingChanges(false);
@@ -556,7 +559,8 @@ if (result.ai_analysis && currentMode === 'musical') {
         waveletType,
         waveletLevels,
         useAiModel,
-        requestAbortController.current.signal
+        requestAbortController.current.signal,
+        maskMode
       );
       applyResult(result);
     } catch (err) {
@@ -633,7 +637,8 @@ if (result.ai_analysis && currentMode === 'musical') {
           newWaveletType,
           newWaveletLevels,
           newMode === 'musical',
-          requestAbortController.current.signal
+          requestAbortController.current.signal,
+          maskMode
         );
         applyResult(result);
       } catch (err) {
@@ -849,6 +854,31 @@ if (result.ai_analysis && currentMode === 'musical') {
                     : 'Choose wavelet and levels'}
                 </span>
               </div>
+
+              {/* Mask Mode Toggle (for Animal/Human modes with Wiener masking) */}
+              {(currentMode === 'animal' || currentMode === 'human') && (
+                <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>Wiener Mask Mode:</span>
+                  <button
+                    type="button"
+                    className={`btn ${maskMode === 'stft' ? 'btn-primary' : ''}`}
+                    onClick={() => { setMaskMode('stft'); setFftPendingChanges(true); }}
+                    style={{ fontSize: 12, padding: '4px 12px' }}
+                    disabled={loading}
+                  >
+                    STFT (Time-Frequency)
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn ${maskMode === 'fft' ? 'btn-primary' : ''}`}
+                    onClick={() => { setMaskMode('fft'); setFftPendingChanges(true); }}
+                    style={{ fontSize: 12, padding: '4px 12px' }}
+                    disabled={loading}
+                  >
+                    FFT (Frequency-Only)
+                  </button>
+                </div>
+              )}
 
               {currentMode === 'human' && (
                 <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>

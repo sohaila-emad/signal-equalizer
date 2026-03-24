@@ -289,6 +289,7 @@ def register_routes(app: Flask) -> None:
 
             # 1. Loading & Mode Setup
             mode = request.form.get("mode", "generic")
+            mask_mode = request.form.get("mask_mode", "stft")  # 'stft' or 'fft'
             target_sr = 100 if mode == 'ecg' else 11025
             y, sr = librosa.load(file_bytes, sr=target_sr, mono=True)
 
@@ -316,7 +317,7 @@ def register_routes(app: Flask) -> None:
             ai_error = None
             ai_f, ai_t, ai_S = None, None, None
 
-            y_eq = apply_equalizer(y, float(sr), bands, weights)
+            y_eq = apply_equalizer(y, float(sr), bands, weights, mode, mask_mode)
 
             if mode == "musical" and use_ai:
                 try:

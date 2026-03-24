@@ -1,0 +1,56 @@
+{
+  "bands": [
+    {
+      "id": "band_1774357568973",
+      "label": "Man",
+      "min_hz": 2100,
+      "max_hz": 5600,
+      "scale": 1,
+      "ranges": [
+        {
+          "min_hz": 2100,
+          "max_hz": 5600
+        }
+      ]
+    },
+    {
+      "id": "band_1774357601923",
+      "label": "Woman",
+      "min_hz": 556,
+      "max_hz": 1500,
+      "scale": 1,
+      "ranges": [
+        {
+          "min_hz": 556,
+          "max_hz": 1500
+        }
+      ]
+    },
+    {
+      "id": "band_1774357619500",
+      "label": "Child",
+      "min_hz": 1700,
+      "max_hz": 1900,
+      "scale": 1,
+      "ranges": [
+        {
+          "min_hz": 1700,
+          "max_hz": 1900
+        }
+      ]
+    },
+    {
+      "id": "band_1774357645778",
+      "label": "Elder",
+      "min_hz": 7800,
+      "max_hz": 10900,
+      "scale": 1,
+      "ranges": [
+        {
+          "min_hz": 7800,
+          "max_hz": 10900
+        }
+      ]
+    }
+  ]
+}
