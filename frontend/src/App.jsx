@@ -880,37 +880,7 @@ if (result.ai_analysis && currentMode === 'musical') {
                 </div>
               )}
 
-              {currentMode === 'human' && (
-                <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 12, color: 'var(--text-dim)', alignSelf: 'center' }}>
-                    Wavelet preset:
-                  </span>
-                  {['male', 'female', 'child', 'adults'].map(preset => (
-                    <button
-                      key={preset}
-                      type="button"
-                      className={`btn ${humanWaveletPreset === preset ? 'btn-primary' : ''}`}
-                      onClick={() => applyHumanPreset(preset)}
-                      style={{ fontSize: 12, padding: '4px 12px', textTransform: 'capitalize' }}
-                    >
-                      {preset === 'male'   ? 'Isolate Male'   :
-                       preset === 'female' ? 'Isolate Female' :
-                       preset === 'child'  ? 'Isolate Child'  :
-                                             'Isolate Adults'}
-                    </button>
-                  ))}
-                  {humanWaveletPreset && (
-                    <button
-                      type="button"
-                      className="btn"
-                      onClick={() => { setWaveletWeights({}); setHumanWaveletPreset(null); }}
-                      style={{ fontSize: 12, padding: '4px 12px' }}
-                    >
-                      Reset
-                    </button>
-                  )}
-                </div>
-              )}
+              
 
               {/* Collapsible Wavelet Bands */}
               <div className="collapsible-panel">
