@@ -481,9 +481,10 @@ def register_routes(app: Flask) -> None:
                     "peak_db":     round(20 * np.log10(peak + 1e-9), 1),
                 })
 
+            sources = sources[:4]
             return jsonify({
                 "sources":     sources,
-                "n_sources":   n_separated,
+                "n_sources":   len(sources),
                 "sample_rate": int(sr),
                 "audio_step":  int(step),
             })
