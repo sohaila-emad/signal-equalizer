@@ -48,11 +48,8 @@ def _build_ecg_masks(freqs: np.ndarray, sigma_hz: float = 1.5):
         f_hi = min(f_hi, nyquist)
         raw[i] = ((freqs >= f_lo) & (freqs < f_hi)).astype(np.float64)
         raw[i] = gaussian_filter1d(raw[i], sigma=sigma_bins, mode='constant', cval=0.0)
-    total = raw.sum(axis=0)
-    dead  = total < 1e-10
-    norm_masks = raw / np.where(total > 1e-10, total, 1.0)
-    norm_masks[:, dead] = 0.25
-    return norm_masks.astype(np.float32), dead
+    dead = np.sum(raw, axis=0) < 1e-10
+    return raw.astype(np.float32), dead
 
 
 def get_ecg_band_signals(signal: np.ndarray, sample_rate: float) -> dict:
@@ -106,44 +103,66 @@ def _apply_ecg_morphological_eq(
     if len(peaks) == 0:
         return sig.astype(np.float32)
 
-    iso_pre_s = int(sr * 0.25)
-    iso_pre_e = int(sr * 0.15)
-    qrs_pre   = int(sr * 0.04)
-    qrs_post  = int(sr * 0.05)
-    j_off     = int(sr * 0.04)
-    st_end    = int(sr * 0.13)
-    t_start   = int(sr * 0.15)
-    t_end     = int(sr * 0.38)
+    # --- NEW ADAPTIVE LOGIC START ---
+    # Calculate average RR interval to adjust windows for fast/slow heart rates
+    if len(peaks) > 1:
+        avg_rr_samples = np.mean(np.diff(peaks))
+        # We use a 1.0s (60bpm) baseline for your original constants
+        # This ratio shrinks or expands the windows based on real speed
+        ratio = min(1.5, max(0.5, avg_rr_samples / sr)) 
+    else:
+        ratio = 1.0 # Fallback if only one peak is found
+    
+    # We multiply your original constants by the 'ratio' so they stay proportional
+    iso_pre_s = int(sr * 0.25 * ratio)
+    iso_pre_e = int(sr * 0.15 * ratio)
+    qrs_pre   = int(sr * 0.04 * ratio)
+    qrs_post  = int(sr * 0.05 * ratio)
+    # MI Targets the early "shelf" (The J-point and immediate ST)
+    j_off     = int(sr * 0.02 * ratio) # Start earlier
+    st_end    = int(sr * 0.08 * ratio) # End earlier to avoid the T-wave
+
+    # STTC Targets the "Slope" into the T-wave
+    t_start   = int(sr * 0.09 * ratio) # Move this closer to the ST-segment
+    t_end     = int(sr * 0.25 * ratio) # Shorten this so it doesn't grab the whole tail
+    # --- NEW ADAPTIVE LOGIC END ---
+
     cd_sigma  = max(1.0, sr / 50.0)
 
     for p in peaks:
+        # 1. Find the Baseline (Isoelectric Line)
         i_s = max(0, p - iso_pre_s)
         i_e = max(0, p - iso_pre_e)
         iso = float(sig[i_s:i_e].mean()) if i_e > i_s else float(sig[max(0,p-5):p].mean())
 
+        # 2. QRS / Norm Adjustment
         if abs(g_norm - 1.0) > 1e-4:
             q_s = max(0, p - qrs_pre)
             q_e = min(N, p + qrs_post + 1)
-            out[q_s:q_e] = iso + (sig[q_s:q_e] - iso) * g_norm
+            out[q_s:q_e] = iso + (sig[q_s:q_e] ) * g_norm
 
+        # 3. Conduction Disturbance (The Blur Math)
         if abs(g_cd - 1.0) > 1e-4:
             q_s  = max(0, p - qrs_pre)
             q_e  = min(N, p + qrs_post + 1)
             seg  = sig[q_s:q_e].copy()
             smth = gaussian_filter1d(seg, sigma=cd_sigma)
+            # Boosts high-freq "jitters" while keeping the "hill"
             out[q_s:q_e] = smth + (seg - smth) * g_cd
 
+        # 4. MI / ST-Segment Adjustment
         if abs(g_mi - 1.0) > 1e-4:
             st_s = min(N, p + j_off)
             st_e = min(N, p + st_end)
             if st_s < st_e:
-                out[st_s:st_e] = iso + (sig[st_s:st_e] - iso) * g_mi
+                out[st_s:st_e] = iso + (sig[st_s:st_e] ) * g_mi
 
+        # 5. STTC / T-Wave Adjustment
         if abs(g_sttc - 1.0) > 1e-4:
             t_s = min(N, p + t_start)
             t_e = min(N, p + t_end)
             if t_s < t_e:
-                out[t_s:t_e] = iso + (sig[t_s:t_e] - iso) * g_sttc
+                out[t_s:t_e] = iso + (sig[t_s:t_e] ) * g_sttc
 
     return _soft_clip(out.astype(np.float32))
 
@@ -370,13 +389,19 @@ def _apply_ecg_mask_eq(
         cls_idx = id_to_idx.get(raw_id)
         if cls_idx is None:
             continue
-        orig_id   = band.get('id', raw_id)
-        user_gain = float(weights.get(orig_id, weights.get(raw_id, 1.0)))
+        # Inside the 'for band in bands:' loop:
+        orig_id = band.get('id', raw_id)
+        slider_value = float(weights.get(orig_id, weights.get(raw_id, 0.0))) # Default to 0.0 (no change)
+
+        # REMAP: Convert -1.0 -> 1.0 range into 0.0 -> 2.0 multiplier
+        user_gain = 1.0 + slider_value # 0.0 means 1.0x, -1.0 means 0.0x, +1.0 means 2.0x
+
+        # Now apply it to the gain curve
         gain_curve += masks[cls_idx].astype(np.float64) * user_gain
         n_matched  += 1
-    if n_matched == 0:
-        return signal.copy().astype(np.float32)
-    gain_curve[dead] = 1.0
+        if n_matched == 0:
+            return signal.copy().astype(np.float32)
+        gain_curve[dead] = 1.0
     output = np.fft.irfft(spectrum * gain_curve, n=n_fft)[:N]
     return _soft_clip(output.astype(np.float32))
 

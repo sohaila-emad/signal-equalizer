@@ -208,7 +208,6 @@ export default function App() {
   const [useAiModel,         setUseAiModel]         = useState(false);
   const [aiStatusMessage,    setAiStatusMessage]    = useState(null);
   const [ecgAnalysis,        setEcgAnalysis]        = useState({ bpm: null, type: null });
-  const [ecgBandSignals,     setEcgBandSignals]     = useState(null); // { norm, mi, sttc, cd } isolated waveforms
 
   const [freqRange, setFreqRange] = useState({ min: 0, max: 5000 });
   const [visFreq,   setVisFreq]   = useState({ min: 0, max: 5000 });
@@ -308,15 +307,6 @@ export default function App() {
   const applyResult = (result) => {
     setInputSignal(new Float32Array(result.input_audio));
     setOutputSignal(new Float32Array(result.output_audio));
-    if (result.ecg_band_signals && Object.keys(result.ecg_band_signals).length > 0) {
-      const converted = {};
-      for (const [k, v] of Object.entries(result.ecg_band_signals)) {
-        converted[k] = new Float32Array(v);
-      }
-      setEcgBandSignals(converted);
-    } else {
-      setEcgBandSignals(null);
-    }
     setSampleRate(result.sample_rate);
     // ECG BPM calculation is performed in EcgAnalysis; clear previous ECG analysis here
     setEcgAnalysis({ bpm: null, type: null });
@@ -1002,8 +992,6 @@ if (result.ai_analysis && currentMode === 'musical') {
                   viewState={viewState}
                   setViewState={setViewState}
                   isEcgMode={currentMode === 'ecg'}
-                  ecgBandSignals={currentMode === 'ecg' ? ecgBandSignals : null}
-                  ecgWeights={currentMode === 'ecg' ? weights : null}
                 />
                 {/* ECG diagnosis panel removed; EcgAnalysis provides its own summary and suggested bands seeds sliders */}
               </div>

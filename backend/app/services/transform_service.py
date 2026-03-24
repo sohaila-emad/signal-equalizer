@@ -5,50 +5,60 @@ from typing import Dict, Any, List, Tuple
 def compute_spectrogram(
     signal: np.ndarray,
     sample_rate: float,
-    window_size: int = 1024, # Slightly larger for better freq resolution
-    target_points: int = 800, # Target number of time columns to send to UI
+    window_size: int = 1024, 
+    target_points: int = 800,
 ) -> Tuple[List[float], List[float], List[List[float]]]:
-    """
-    Dynamically adjusts hop_size to ensure the spectrogram covers the full signal
-    without exceeding memory limits.
-    """
+    
     N = len(signal)
+    
+    # --- AUTO-ADJUST FOR ECG / LOW SAMPLE RATE ---
+    # If it's 100Hz, a 1024 window is 10 seconds (Too Big!).
+    # We shrink it to 256 (2.5 seconds) or 128 (1.2 seconds).
+    if sample_rate <= 200:
+        window_size = 256 
+        # We also need more 'target_points' for ECG to see individual beats
+        target_points = max(target_points, 1000)
+    
+    # Safety check for very short signals
     if N < window_size:
-        # Fallback for very short signals
         window_size = 2**int(np.log2(N)) if N > 2 else 2
-        
+
+    # --- PADDING FOR 0.0s START ---
+    pad_amount = window_size // 2
+    padded_signal = np.pad(signal, (pad_amount, pad_amount), mode='edge')
+    
     # --- DYNAMIC HOP SIZE ---
-    # We want (N / hop_size) to be roughly target_points
-    hop_size = max(window_size // 4, N // target_points)
+    # hop_size determines the 'Time Resolution'
+    hop_size = max(1, N // target_points)
     
     window = np.hanning(window_size)
     frames = []
     times = []
 
-    # Slide through the WHOLE signal
-    for start in range(0, N - window_size + 1, hop_size):
-        end = start + window_size
-        segment = signal[start:end] * window
+    # --- THE SLIDING WINDOW ---
+    # We use len(padded_signal) to ensure we don't cut off the end
+    for start in range(0, len(padded_signal) - window_size + 1, hop_size):
+        segment = padded_signal[start : start + window_size] * window
         
-        # Compute magnitude spectrum
+        # FFT Math
         spectrum = np.fft.rfft(segment)
         mag = np.abs(spectrum)
         
         frames.append(mag)
-        times.append((start + window_size / 2) / sample_rate)
+        # Fix: Dividing start by sample_rate gives exactly 0.0s for the first frame
+        times.append(start / sample_rate)
 
     if not frames:
         return [], [], []
 
-    # Stack: Rows = Freq, Cols = Time
+    # --- POST-PROCESSING ---
     S = np.stack(frames, axis=1)
     freqs = np.fft.rfftfreq(window_size, d=1.0 / sample_rate)
 
-    # Log scale (dB) - Clip at -100dB to avoid log(0)
+    # Log scale (dB) 
     S_db = np.clip(20.0 * np.log10(S + 1e-5), -100, 0)
 
-    # Final decimation: If we still have too many frequency bins (rows), 
-    # we take every 2nd or 4th bin to keep UI snappy.
+    # Final decimation for UI performance
     row_step = max(1, S_db.shape[0] // 256) 
     
     return (
